@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
-    <title>My Videos</title>
+    <title>Community Video Finder</title>
     <!-- VK Bridge: The library to interact with the VK client -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <!-- Tailwind CSS for styling -->
@@ -66,64 +66,58 @@
 
     <div class="p-4 max-w-4xl mx-auto">
         <header class="text-center mb-4">
-            <h1 class="text-2xl font-bold text-gray-100">My Videos</h1>
+            <h1 class="text-2xl font-bold text-gray-100">Community Video Finder</h1>
         </header>
 
-        <!-- Search and Filter Controls -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
-            <input type="text" id="search-input" placeholder="Search my videos..." class="control-input sm:col-span-2">
-            <select id="sort-select" class="control-input">
-                <option value="1">Newest First</option>
-                <option value="0">Oldest First</option>
-                <option value="2">Most Popular</option>
+        <div class="space-y-2 mb-4">
+            <select id="community-select" class="control-input w-full">
+                <!-- UPDATED: New default option for global search -->
+                <option value="all">Search All Followed Communities</option>
             </select>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input type="text" id="search-input" placeholder="Search videos..." class="control-input sm:col-span-2">
+                <select id="sort-select" class="control-input">
+                    <option value="1">Newest First</option>
+                    <option value="0">Oldest First</option>
+                    <option value="2">Most Popular</option>
+                </select>
+            </div>
         </div>
 
-        <!-- Container for video grid -->
         <main id="video-container" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            <!-- Video cards will be populated here -->
         </main>
 
-        <!-- Message area for loading or no results -->
-        <div id="message-area" class="text-center text-gray-400 py-10">Loading your videos...</div>
+        <div id="message-area" class="text-center text-gray-400 py-10">Type in the search bar to begin.</div>
     </div>
 
     <script>
         // --- STATE MANAGEMENT ---
-        const APP_ID = 53969951; // <-- UPDATED with your App ID
+        const APP_ID = 53969951;
         let accessToken = null;
-        let userId = null;
         let videoOffset = 0;
+        let newsfeedNextFrom = ''; // For global search pagination
         let isLoading = false;
         let currentQuery = '';
-        let currentSort = '1'; // Default to Newest First
+        let currentSort = '1';
+        let selectedCommunityId = 'all'; // Default to global search
 
         // --- DOM ELEMENTS ---
         const videoContainer = document.getElementById('video-container');
         const messageArea = document.getElementById('message-area');
         const searchInput = document.getElementById('search-input');
         const sortSelect = document.getElementById('sort-select');
+        const communitySelect = document.getElementById('community-select');
 
         // --- 1. INITIALIZE ---
         vkBridge.send('VKWebAppInit');
 
         // --- 2. AUTH & START ---
         async function startApp() {
-            if (APP_ID === 0) {
-                messageArea.textContent = 'Error: Please set your APP_ID in the script.';
-                return;
-            }
             try {
-                const [tokenData, userInfo] = await Promise.all([
-                    vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'video' }),
-                    vkBridge.send('VKWebAppGetUserInfo')
-                ]);
-                
+                const tokenData = await vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'groups,video' });
                 accessToken = tokenData.access_token;
-                userId = userInfo.id;
-
-                if (accessToken && userId) {
-                    await fetchMyVideos(true); // Initial load
+                if (accessToken) {
+                    await fetchUserCommunities();
                 }
             } catch (error) {
                 console.error('Auth Error:', error);
@@ -131,14 +125,41 @@
             }
         }
         
-        // --- 3. FETCH MY VIDEOS FROM VK API ---
-        async function fetchMyVideos(isNewSearch = false) {
+        // --- 3. FETCH & POPULATE COMMUNITIES DROPDOWN ---
+        async function fetchUserCommunities() {
+            try {
+                const groupsData = await vkBridge.send('VKWebAppCallAPIMethod', {
+                    method: 'groups.get',
+                    params: { access_token: accessToken, extended: 1, filter: ['admin', 'editor', 'moder', 'member'], fields: 'name', v: '5.131' }
+                });
+                const sortedGroups = groupsData.response.items.sort((a, b) => a.name.localeCompare(b.name));
+                sortedGroups.forEach(group => {
+                    const option = document.createElement('option');
+                    option.value = group.id;
+                    option.textContent = group.name;
+                    communitySelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Failed to fetch communities:', error);
+            }
+        }
+
+        // --- 4. MASTER FETCH FUNCTION ---
+        async function fetchContent(isNewSearch = false) {
             if (isLoading) return;
+            // For global search, don't run if the query is empty
+            if (selectedCommunityId === 'all' && !currentQuery) {
+                videoContainer.innerHTML = '';
+                messageArea.textContent = 'Type in the search bar to begin a global search.';
+                messageArea.classList.remove('hidden');
+                return;
+            }
             isLoading = true;
 
             if (isNewSearch) {
                 videoContainer.innerHTML = '';
                 videoOffset = 0;
+                newsfeedNextFrom = '';
                 messageArea.textContent = 'Searching...';
                 messageArea.classList.remove('hidden');
             } else {
@@ -147,29 +168,12 @@
             }
 
             try {
-                // We always use video.search now as it supports sorting and querying
-                const params = {
-                    access_token: accessToken,
-                    owner_id: userId,
-                    q: currentQuery,
-                    sort: currentSort,
-                    count: 50,
-                    offset: videoOffset,
-                    adult: 1, // Include potentially sensitive content
-                    v: '5.131'
-                };
-
-                const data = await vkBridge.send('VKWebAppCallAPIMethod', { method: 'video.search', params });
-                
-                if (data.response && data.response.items.length > 0) {
-                    renderVideos(data.response.items);
-                    videoOffset += data.response.items.length;
-                } else if (isNewSearch) {
-                    messageArea.textContent = 'No videos found.';
+                // UPDATED: Switch API based on selection
+                if (selectedCommunityId === 'all') {
+                    await fetchGlobalVideoSearch();
                 } else {
-                    messageArea.textContent = 'No more videos to load.';
+                    await fetchCommunityVideos();
                 }
-
             } catch (error) {
                 console.error('API Error:', error);
                 messageArea.textContent = 'Failed to load videos.';
@@ -181,16 +185,57 @@
             }
         }
 
-        // --- 4. RENDER VIDEOS ---
-        function renderVideos(items) {
-            items.forEach(video => {
+        // --- 5. API CALLERS ---
+        async function fetchCommunityVideos() {
+            const params = {
+                access_token: accessToken, owner_id: -selectedCommunityId, q: currentQuery,
+                sort: currentSort, count: 50, offset: videoOffset, adult: 1, v: '5.131'
+            };
+            const data = await vkBridge.send('VKWebAppCallAPIMethod', { method: 'video.search', params });
+            if (data.response && data.response.items.length > 0) {
+                renderVideos(data.response.items);
+                videoOffset += data.response.items.length;
+            } else if (videoOffset === 0) {
+                messageArea.textContent = 'No videos found in this community.';
+            } else {
+                messageArea.textContent = 'No more videos to load.';
+            }
+        }
+
+        async function fetchGlobalVideoSearch() {
+            const params = {
+                access_token: accessToken, q: currentQuery, extended: 1,
+                count: 30, v: '5.131'
+            };
+            if (newsfeedNextFrom) params.start_from = newsfeedNextFrom;
+
+            const data = await vkBridge.send('VKWebAppCallAPIMethod', { method: 'newsfeed.search', params });
+            if (data.response && data.response.items.length > 0) {
+                // Filter for video content only
+                const videoItems = data.response.items.filter(item => item.attachments?.some(att => att.type === 'video'));
+                renderVideos(videoItems, data.response.groups);
+                newsfeedNextFrom = data.response.next_from;
+            } else if (!newsfeedNextFrom) {
+                messageArea.textContent = 'No videos found in your communities.';
+            } else {
+                messageArea.textContent = 'No more videos to load.';
+            }
+        }
+
+        // --- 6. RENDERER ---
+        function renderVideos(items, groups = []) {
+            items.forEach(item => {
+                // Handle different data structures from the two APIs
+                const videoAttachment = item.attachments?.find(att => att.type === 'video');
+                const video = videoAttachment ? videoAttachment.video : item;
                 if (!video.id) return;
+                
                 const card = createVideoCard(video);
                 videoContainer.appendChild(card);
             });
         }
 
-        // --- 5. CARD CREATION HELPER ---
+        // --- 7. CARD CREATION HELPER ---
         function createVideoCard(video) {
             const card = document.createElement('a');
             card.className = 'video-card';
@@ -200,8 +245,8 @@
             const thumbnail = video.image || video.first_frame;
             const bestThumbnail = thumbnail ? thumbnail.sort((a, b) => b.width - a.width)[0].url : 'https://placehold.co/640x360/1c1c1e/8d8d93?text=No+Thumbnail';
 
-            // Function to format large numbers (e.g., 1500 -> 1.5K)
             const formatViews = (views) => {
+                if (!views) return '0';
                 if (views >= 1000000) return (views / 1000000).toFixed(1) + 'M';
                 if (views >= 1000) return (views / 1000).toFixed(1) + 'K';
                 return views;
@@ -223,29 +268,32 @@
             return card;
         }
 
-        // --- 6. EVENT LISTENERS ---
+        // --- 8. EVENT LISTENERS ---
         function triggerSearch() {
             const query = searchInput.value.trim();
             const sort = sortSelect.value;
-            if (query !== currentQuery || sort !== currentSort) {
+            const communityId = communitySelect.value;
+
+            if (query !== currentQuery || sort !== currentSort || communityId !== selectedCommunityId) {
                 currentQuery = query;
                 currentSort = sort;
-                fetchMyVideos(true);
+                selectedCommunityId = communityId;
+                fetchContent(true);
             }
         }
 
-        // Use a debounce to prevent firing search on every key press
         let debounceTimer;
         searchInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(triggerSearch, 500); // Wait 500ms after user stops typing
+            debounceTimer = setTimeout(triggerSearch, 500);
         });
 
         sortSelect.addEventListener('change', triggerSearch);
+        communitySelect.addEventListener('change', triggerSearch);
 
         window.addEventListener('scroll', () => {
             if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 300 && !isLoading) {
-                fetchMyVideos(false);
+                fetchContent(false);
             }
         });
 
