@@ -71,7 +71,7 @@
     <script>
         // App Configuration
         const APP_CONFIG = {
-            APP_ID: 53969951, // Your actual VK Mini App ID from the URL
+            APP_ID: 53969951, // Your VK Mini App ID
             API_VERSION: '5.199',
             MAX_VIDEOS_TO_FETCH: 1000,
             BATCH_SIZE: 50,
@@ -87,7 +87,7 @@
         let totalVideosFetched = 0;
         let indexingError = null;
         let accessToken = null;
-        let launchParams = {};
+        let userId = null;
     </script>
 
     <!-- Main App Container -->
@@ -304,9 +304,6 @@
     </div>
 
     <script>
-        // Initialize VK Bridge
-        vkBridge.send('VKWebAppInit', {});
-        
         // DOM Elements
         const indexBtn = document.getElementById('index-btn');
         const indexText = document.getElementById('index-text');
@@ -344,70 +341,58 @@
         let activeDurationFilter = null;
         let activeSearchTerm = '';
         
-        // Parse launch parameters from URL
-        function parseLaunchParams() {
-            const params = new URLSearchParams(window.location.search);
-            launchParams = {};
-            
-            for (const [key, value] of params.entries()) {
-                launchParams[key] = value;
-            }
-            
-            console.log('Launch params:', launchParams);
-            
-            // Get access token from launch params
-            if (params.get('vk_access_token_settings')) {
-                console.log('Token settings:', params.get('vk_access_token_settings'));
-            }
-            
-            return launchParams;
-        }
-        
         // Get access token using VK Bridge
         async function getAccessToken() {
             try {
-                console.log('Getting launch params...');
+                console.log('Getting access token via VKWebAppGetAuthToken...');
                 
-                // First, get launch params which contain access token
-                const launchParamsResponse = await vkBridge.send('VKWebAppGetLaunchParams');
-                console.log('Launch params response:', launchParamsResponse);
-                
-                // Try to get token directly if it's in launch params
-                if (launchParamsResponse.access_token) {
-                    accessToken = launchParamsResponse.access_token;
-                    console.log('Got access token from launch params');
-                    return accessToken;
-                }
-                
-                // If not in launch params, try to get it via auth token request
-                console.log('Trying to get auth token...');
-                const authResponse = await vkBridge.send('VKWebAppGetAuthToken', {
+                // Request access token with required scopes
+                const response = await vkBridge.send('VKWebAppGetAuthToken', {
                     app_id: APP_CONFIG.APP_ID,
-                    scope: 'favorites'  // Only request favorites scope
+                    scope: 'favorites'  // Only need favorites scope for fave.get
                 });
                 
-                if (authResponse && authResponse.access_token) {
-                    accessToken = authResponse.access_token;
-                    console.log('Got access token via VKWebAppGetAuthToken');
-                    return accessToken;
-                }
+                console.log('Auth token response:', response);
                 
-                throw new Error('Could not get access token');
+                if (response && response.access_token) {
+                    accessToken = response.access_token;
+                    console.log('Successfully obtained access token');
+                    return accessToken;
+                } else {
+                    throw new Error('No access token in response');
+                }
             } catch (error) {
                 console.error('Error getting access token:', error);
                 
-                // Last resort: try to extract from URL
-                const urlParams = new URLSearchParams(window.location.hash.substring(1));
-                const token = urlParams.get('access_token');
+                // Check if we're in VK environment
+                const launchParams = await vkBridge.send('VKWebAppGetLaunchParams');
+                console.log('Launch params:', launchParams);
                 
-                if (token) {
-                    accessToken = token;
-                    console.log('Got access token from URL hash');
-                    return accessToken;
+                // Try alternative method - get token from storage
+                try {
+                    const storageData = await vkBridge.send('VKWebAppStorageGet', {
+                        keys: ['access_token']
+                    });
+                    
+                    if (storageData && storageData.keys && storageData.keys[0] && storageData.keys[0].value) {
+                        accessToken = storageData.keys[0].value;
+                        console.log('Got token from storage');
+                        return accessToken;
+                    }
+                } catch (storageError) {
+                    console.log('No token in storage');
                 }
                 
-                throw new Error('Failed to get access token. Please make sure the app has permission to access your favorites.');
+                throw new Error('Please authorize the app to access your liked videos');
             }
+        }
+        
+        // Parse URL parameters for user ID
+        function parseURLParams() {
+            const params = new URLSearchParams(window.location.search);
+            userId = params.get('vk_user_id');
+            console.log('User ID from URL:', userId);
+            return userId;
         }
         
         // Load cached data on startup
@@ -525,24 +510,29 @@
                 accessToken = await getAccessToken();
             }
             
-            console.log(`Calling API: ${method}`, params);
+            console.log(`Calling VK API: ${method}`, params);
             
-            const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                method: method,
-                params: {
-                    ...params,
-                    access_token: accessToken,
-                    v: APP_CONFIG.API_VERSION
+            try {
+                const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                    method: method,
+                    params: {
+                        ...params,
+                        access_token: accessToken,
+                        v: APP_CONFIG.API_VERSION
+                    }
+                });
+                
+                console.log(`API ${method} response:`, response);
+                
+                if (response.error) {
+                    throw new Error(`API Error ${response.error.error_code}: ${response.error.error_msg}`);
                 }
-            });
-            
-            console.log(`API response for ${method}:`, response);
-            
-            if (response.error) {
-                throw new Error(`API Error: ${response.error.error_msg} (${response.error.error_code})`);
+                
+                return response.response;
+            } catch (error) {
+                console.error(`API call ${method} failed:`, error);
+                throw error;
             }
-            
-            return response.response;
         }
         
         // Index videos from VK API
@@ -557,6 +547,7 @@
             // Show loading overlay
             loadingOverlay.classList.remove('hidden');
             updateLoadingProgress(0, 0);
+            loadingMessage.textContent = 'Requesting permissions...';
             
             // Update button state
             indexBtn.disabled = true;
@@ -567,56 +558,55 @@
             errorPanel.classList.add('hidden');
             
             try {
-                // First, get access token
-                try {
-                    accessToken = await getAccessToken();
-                    console.log('Access token obtained:', accessToken ? 'Yes' : 'No');
-                } catch (tokenError) {
-                    console.error('Token error:', tokenError);
-                    throw new Error('Failed to get access token. Please make sure the app has permission to access your favorites.');
+                // First, get access token (this will trigger permission request)
+                loadingMessage.textContent = 'Please authorize the app to access your liked videos...';
+                accessToken = await getAccessToken();
+                
+                if (!accessToken) {
+                    throw new Error('No access token received');
                 }
+                
+                loadingMessage.textContent = 'Fetching your liked videos from VK...';
                 
                 // Initialize an empty array for videos
                 const fetchedVideos = [];
                 
                 // Start fetching loop
                 let hasMoreVideos = true;
-                let retryCount = 0;
-                const maxRetries = 3;
                 
-                while (hasMoreVideos && totalVideosFetched < APP_CONFIG.MAX_VIDEOS_TO_FETCH && retryCount < maxRetries) {
+                while (hasMoreVideos && totalVideosFetched < APP_CONFIG.MAX_VIDEOS_TO_FETCH) {
                     try {
-                        console.log(`Fetching videos batch, offset: ${currentOffset}`);
+                        console.log(`Fetching batch at offset ${currentOffset}`);
                         
                         // Call VK API to get liked videos
                         const response = await callVKAPI('fave.get', {
                             item_type: 'video',
                             offset: currentOffset,
                             count: APP_CONFIG.BATCH_SIZE,
-                            extended: 1  // Get extended information
+                            extended: 1
                         });
                         
                         if (response && response.items) {
-                            const videos = response.items;
+                            const items = response.items;
                             
-                            console.log(`Received ${videos.length} videos in batch`);
+                            console.log(`Received ${items.length} items in batch`);
                             
-                            if (videos.length === 0) {
+                            if (items.length === 0) {
                                 hasMoreVideos = false;
-                                console.log('No more videos found');
+                                console.log('No more items found');
                                 break;
                             }
                             
-                            // Process each video
-                            for (const item of videos) {
-                                // The structure might be different, let's check
-                                let video = item;
-                                
-                                // If it's a fave item with video inside
-                                if (item.type === 'video' && item.video) {
-                                    video = item.video;
+                            // Process each item
+                            for (const item of items) {
+                                // Check if it's a video item
+                                if (item.type !== 'video') {
+                                    console.log('Skipping non-video item:', item.type);
+                                    continue;
                                 }
                                 
+                                // Extract video data
+                                const video = item.video || item;
                                 const videoData = {
                                     id: video.id || video.video_id,
                                     owner_id: video.owner_id,
@@ -627,7 +617,7 @@
                                     date: video.date || Math.floor(Date.now() / 1000),
                                     width: video.width || 0,
                                     height: video.height || 0,
-                                    image: video.image || video.thumb || video.photo_130 || video.photo_320 || [],
+                                    image: video.image || video.photo_320 || video.photo_130 || [],
                                     player: video.player,
                                     access_key: video.access_key,
                                     adding_date: item.adding_date || video.date
@@ -639,39 +629,27 @@
                                 fetchedVideos.push(videoData);
                             }
                             
-                            totalVideosFetched += videos.length;
+                            totalVideosFetched += items.length;
                             currentOffset += APP_CONFIG.BATCH_SIZE;
                             
                             // Update progress
                             const progress = Math.min(100, Math.round((totalVideosFetched / APP_CONFIG.MAX_VIDEOS_TO_FETCH) * 100));
                             updateLoadingProgress(progress, totalVideosFetched);
                             
-                            // If we got fewer videos than requested, we've reached the end
-                            if (videos.length < APP_CONFIG.BATCH_SIZE) {
+                            // If we got fewer items than requested, we've reached the end
+                            if (items.length < APP_CONFIG.BATCH_SIZE) {
                                 hasMoreVideos = false;
                             }
-                            
-                            // Reset retry count on success
-                            retryCount = 0;
                         } else {
-                            console.warn('Unexpected API response structure:', response);
-                            // Try to continue with what we have
+                            console.warn('Unexpected API response:', response);
                             hasMoreVideos = false;
                         }
                         
                     } catch (error) {
                         console.error('Error fetching videos batch:', error);
-                        retryCount++;
-                        
-                        if (retryCount >= maxRetries) {
-                            indexingError = error;
-                            showError('Failed to fetch videos after multiple attempts', error);
-                            break;
-                        }
-                        
-                        // Wait before retry
-                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-                        console.log(`Retrying... attempt ${retryCount}`);
+                        indexingError = error;
+                        showError('Failed to fetch videos', error);
+                        break;
                     }
                 }
                 
@@ -691,15 +669,14 @@
                     emptyState.classList.add('hidden');
                     
                     // Show success message
-                    loadingMessage.textContent = `Indexing complete! Found ${totalVideosFetched} videos.`;
-                    loadingStats.textContent = `Successfully indexed ${fetchedVideos.length} videos`;
+                    loadingMessage.textContent = `Indexing complete! Found ${fetchedVideos.length} videos.`;
+                    loadingStats.textContent = `Successfully indexed your liked videos`;
                 } else {
-                    loadingMessage.textContent = 'No videos found in your favorites.';
-                    loadingStats.textContent = 'Try liking some videos first';
+                    loadingMessage.textContent = 'No liked videos found';
+                    loadingStats.textContent = 'You haven\'t liked any videos yet or there was an error';
                     
-                    // If we have an error, show it
-                    if (indexingError) {
-                        showError('Could not fetch videos', indexingError);
+                    if (!indexingError) {
+                        showError('No videos found', new Error('Your favorites list appears to be empty or inaccessible'));
                     }
                 }
                 
@@ -745,7 +722,7 @@
                     message: error.message,
                     stack: error.stack,
                     timestamp: new Date().toISOString(),
-                    launchParams: launchParams
+                    userId: userId
                 }, null, 2);
             }
             
@@ -775,32 +752,33 @@
                 // Get thumbnail
                 let thumbnail = '';
                 if (Array.isArray(video.image) && video.image.length > 0) {
-                    // Sort by width to get highest resolution
-                    const sortedImages = [...video.image].sort((a, b) => (b.width || 0) - (a.width || 0));
-                    thumbnail = sortedImages[0].url || sortedImages[0];
+                    // Get the largest available thumbnail
+                    const sortedImages = [...video.image]
+                        .filter(img => img.url)
+                        .sort((a, b) => (b.width || 0) - (a.width || 0));
+                    
+                    if (sortedImages.length > 0) {
+                        thumbnail = sortedImages[0].url;
+                    }
                 } else if (typeof video.image === 'string') {
                     thumbnail = video.image;
-                } else if (video.photo_320) {
-                    thumbnail = video.photo_320;
-                } else if (video.photo_130) {
-                    thumbnail = video.photo_130;
                 }
                 
                 // Calculate duration category
                 let durationCategory = 'long';
-                if (video.duration < 300) { // < 5 minutes
+                if (video.duration < 300) {
                     durationCategory = 'short';
-                } else if (video.duration < 1200) { // < 20 minutes
+                } else if (video.duration < 1200) {
                     durationCategory = 'medium';
                 }
                 
-                // Get resolution color class
+                // Get resolution color
                 const resolutionColor = getResolutionColor(video.resolution);
                 
                 card.innerHTML = `
                     <div class="relative">
                         ${thumbnail ? 
-                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover" onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"180\" viewBox=\"0 0 320 180\"><rect width=\"320\" height=\"180\" fill=\"%231c1c1e\"/><text x=\"160\" y=\"90\" font-family=\"Arial\" font-size=\"14\" fill=\"%23666\" text-anchor=\"middle\">No thumbnail</text></svg>'">` :
+                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover" loading="lazy">` :
                             `<div class="w-full h-48 bg-gray-900 flex items-center justify-center">
                                 <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -900,13 +878,13 @@
                     
                     switch(activeDurationFilter) {
                         case 'short':
-                            if (duration >= 300) return false; // 5 minutes = 300 seconds
+                            if (duration >= 300) return false;
                             break;
                         case 'medium':
-                            if (duration < 300 || duration > 1200) return false; // 5-20 minutes
+                            if (duration < 300 || duration > 1200) return false;
                             break;
                         case 'long':
-                            if (duration <= 1200) return false; // >20 minutes
+                            if (duration <= 1200) return false;
                             break;
                     }
                 }
@@ -948,11 +926,9 @@
         
         // Update active filters display
         function updateActiveFiltersDisplay() {
-            // Clear existing active filters (except search)
             const activeFilterElements = document.querySelectorAll('#active-filters > div:not(:first-child)');
             activeFilterElements.forEach(el => el.remove());
             
-            // Add resolution filter if active
             if (resolutionFilter.value !== 'all') {
                 const filterChip = document.createElement('div');
                 filterChip.className = 'bg-blue-900/30 text-blue-400 py-1 px-3 rounded-full text-sm flex items-center gap-2';
@@ -967,7 +943,6 @@
                 activeFilters.appendChild(filterChip);
             }
             
-            // Add duration filter if active
             if (activeDurationFilter) {
                 let durationText = '';
                 switch(activeDurationFilter) {
@@ -989,7 +964,6 @@
                 activeFilters.appendChild(filterChip);
             }
             
-            // Update search filter display
             if (activeSearchTerm && activeSearchTerm.trim() !== '') {
                 activeSearchText.textContent = `Search: "${activeSearchTerm}"`;
                 activeFilters.classList.remove('hidden');
@@ -999,7 +973,6 @@
                 activeFilters.classList.add('hidden');
             }
             
-            // Add event listeners to clear filter buttons
             document.querySelectorAll('.clear-filter').forEach(button => {
                 button.addEventListener('click', function() {
                     const filterType = this.getAttribute('data-type');
@@ -1017,6 +990,25 @@
                     filterVideos();
                 });
             });
+        }
+        
+        // Initialize VK Bridge
+        async function initializeApp() {
+            try {
+                console.log('Initializing VK Bridge...');
+                await vkBridge.send('VKWebAppInit', {});
+                console.log('VK Bridge initialized successfully');
+                
+                // Get user ID from URL params
+                parseURLParams();
+                
+                // Load cached data
+                loadCachedData();
+                
+            } catch (error) {
+                console.error('Failed to initialize VK Bridge:', error);
+                showError('Failed to initialize VK Mini App', error);
+            }
         }
         
         // Event Listeners
@@ -1067,17 +1059,13 @@
             chip.addEventListener('click', function() {
                 const duration = this.getAttribute('data-duration');
                 
-                // Toggle active state
                 if (activeDurationFilter === duration) {
-                    // Deselect if already active
                     activeDurationFilter = null;
                     this.setAttribute('data-active', 'false');
                     this.className = 'duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
                 } else {
-                    // Select new chip
                     activeDurationFilter = duration;
                     
-                    // Update all chips
                     durationChips.forEach(c => {
                         if (c === this) {
                             c.setAttribute('data-active', 'true');
@@ -1114,23 +1102,8 @@
             }
         });
         
-        // Initialize the app
-        parseLaunchParams();
-        loadCachedData();
-        
-        // Initialize VK Bridge
-        vkBridge.send('VKWebAppInit', {}).then(() => {
-            console.log('VK Bridge initialized');
-            
-            // Test the bridge
-            return vkBridge.send('VKWebAppGetLaunchParams');
-        }).then(params => {
-            console.log('VK Bridge test successful, launch params:', params);
-            launchParams = params;
-        }).catch(error => {
-            console.error('VK Bridge initialization error:', error);
-            showError('VK Bridge initialization failed', error);
-        });
+        // Initialize the app when DOM is loaded
+        document.addEventListener('DOMContentLoaded', initializeApp);
     </script>
 </body>
 </html>
