@@ -27,11 +27,11 @@
     <!-- Header -->
     <header class="flex justify-between items-center mb-6">
         <div>
-            <h1 class="text-xl font-bold">Liked Indexer</h1>
-            <p id="stats-text" class="text-gray-500 text-sm">Not indexed yet</p>
+            <h1 class="text-xl font-bold">Liked Indexer (Test Mode)</h1>
+            <p id="stats-text" class="text-gray-500 text-sm">Testing with 10 video limit</p>
         </div>
         <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
-            Index Videos
+            Test Indexing
         </button>
     </header>
 
@@ -98,7 +98,6 @@
     const resFilter = document.getElementById('res-filter');
     const lenChips = document.querySelectorAll('.filter-chip');
 
-    // Initialize VK Bridge
     vkBridge.send('VKWebAppInit').catch(e => console.error("Init failed", e));
 
     async function init() {
@@ -114,8 +113,6 @@
         }
     }
 
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
     indexBtn.addEventListener('click', async () => {
         indexBtn.disabled = true;
         loadingOverlay.classList.remove('hidden');
@@ -123,10 +120,9 @@
         loadingText.innerText = "Requesting access token...";
         
         try {
-            // Request token
             const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
                 app_id: APP_ID, 
-                scope: 'video,fave,offline' // 'offline' helps token longevity
+                scope: 'video,fave,offline'
             });
 
             if (!auth.access_token) {
@@ -139,14 +135,15 @@
             let offset = 0;
             let hasMore = true;
 
+            // TROUBLESHOOTING MODE: Only fetch 1 batch of 10
             while (hasMore) {
-                loadingText.innerText = `Indexing: ${allItems.length} found (Offset: ${offset})`;
+                loadingText.innerText = `Fetching test batch... (Found ${allItems.length})`;
                 
                 const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                     method: 'fave.get',
                     params: { 
                         item_type: 'video', 
-                        count: 50, 
+                        count: 10, // Small count for troubleshooting
                         offset: offset, 
                         extended: 1, 
                         v: '5.131', 
@@ -154,7 +151,6 @@
                     }
                 });
 
-                // Error handling for API method call
                 if (response.error_type || response.error_data) {
                     throw response;
                 }
@@ -168,19 +164,16 @@
                         .filter(v => v && v.id);
                     
                     allItems = allItems.concat(videos);
-                    offset += 50;
+                    offset += 10;
                     
-                    // Safety break
-                    if (offset >= 30) hasMore = false;
-                    
-                    // Small delay to prevent hitting VK rate limits (Too many requests)
-                    await sleep(200); 
+                    // STOP after 10 videos for troubleshooting
+                    if (offset >= 10) hasMore = false;
                 }
             }
 
             if (allItems.length === 0) {
-                loadingText.innerText = "Finished. 0 liked videos found.";
-                setTimeout(() => loadingOverlay.classList.add('hidden'), 2000);
+                loadingText.innerText = "No liked videos found in API response.";
+                setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
             } else {
                 indexedVideos = allItems;
                 localStorage.setItem('indexed_liked_videos', JSON.stringify(indexedVideos));
@@ -190,25 +183,17 @@
             }
 
         } catch (e) {
-            console.error("Critical Error:", e);
+            console.error("Troubleshooting Error:", e);
             loadingText.innerText = "Operation Failed";
             errorDetails.classList.remove('hidden');
-            
-            // Show the actual error content so we can debug
-            const msg = e.error_data?.error_msg || e.message || "Unknown Error Object";
             errorLog.innerText = JSON.stringify(e, null, 2);
-            
-            // Specific hint for App ID mismatch
-            if (JSON.stringify(e).includes("invalid app_id")) {
-                errorLog.innerText += "\n\nHINT: The App ID in your code (" + APP_ID + ") doesn't match the one in your VK dashboard.";
-            }
         } finally {
             indexBtn.disabled = false;
         }
     });
 
     function updateStats() {
-        statsText.innerText = `Total: ${indexedVideos.length} videos indexed`;
+        statsText.innerText = `Total: ${indexedVideos.length} videos indexed (Test Mode)`;
     }
 
     function formatDuration(sec) {
