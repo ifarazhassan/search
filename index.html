@@ -385,7 +385,7 @@
                     
                     const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
                         app_id: APP_CONFIG.APP_ID,
-                        scope: 'video' // The minimum scope needed for fave.get
+                        scope: 'video,offline' // Try with offline scope for better access
                     });
                     
                     accessToken = tokenResponse.access_token;
