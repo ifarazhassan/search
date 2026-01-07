@@ -1,292 +1,584 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
-    <title>Liked Video Indexer</title>
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: -apple-system, system-ui, sans-serif; background-color: #000; color: #fff; }
-        .video-card { background: #1c1c1e; border-radius: 12px; transition: transform 0.2s; }
-        .video-card:hover { transform: scale(1.02); }
-        .badge { background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; }
-        .filter-chip { 
-            padding: 6px 12px; border-radius: 20px; border: 1px solid #3a3a3c; 
-            font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+import React, { useState, useEffect } from 'react';
+import { Search, SlidersHorizontal, PlayCircle, Clock, Video, ArrowUpDown, RefreshCw, Download, AlertCircle } from 'lucide-react';
+
+const VKVideoManager = () => {
+  const [videos, setVideos] = useState([]);
+  const [filteredVideos, setFilteredVideos] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [showFilters, setShowFilters] = useState(false);
+  const [vkBridgeReady, setVkBridgeReady] = useState(false);
+  
+  const APP_ID = 53969951;
+  
+  // Filter states
+  const [filters, setFilters] = useState({
+    minDuration: '',
+    maxDuration: '',
+    minViews: '',
+    resolution: 'all',
+    dateFrom: '',
+    dateTo: ''
+  });
+
+  // Initialize VK Bridge
+  useEffect(() => {
+    const initVK = async () => {
+      try {
+        // Check if VK Bridge is available
+        if (window.vkBridge) {
+          await window.vkBridge.send('VKWebAppInit');
+          setVkBridgeReady(true);
+          
+          // Auto-fetch videos on load
+          fetchLikedVideos();
+        } else {
+          setError('VK Bridge not available. Please run this app inside VK.');
         }
-        .filter-chip.active { background: #007aff; border-color: #007aff; }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 10px; }
-        .error-pre { background: #2c0000; color: #ff8888; padding: 10px; border-radius: 8px; font-size: 10px; overflow-x: auto; margin-top: 10px; text-align: left; }
-    </style>
-</head>
-<body>
+      } catch (err) {
+        console.error('VK initialization error:', err);
+        setError('Failed to initialize VK Bridge: ' + err.message);
+      }
+    };
+    
+    initVK();
+  }, []);
 
-<div class="p-4 max-w-4xl mx-auto">
-    <!-- Header -->
-    <header class="flex justify-between items-center mb-6">
-        <div>
-            <h1 class="text-xl font-bold">Liked Indexer (Test Mode)</h1>
-            <p id="stats-text" class="text-gray-500 text-sm">Testing with 10 video limit</p>
-        </div>
-        <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
-            Test Indexing
-        </button>
-    </header>
+  // Fetch liked videos from VK API
+  const fetchLikedVideos = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // First, get auth token if needed
+      let accessToken = null;
+      
+      try {
+        const authResult = await window.vkBridge.send('VKWebAppGetAuthToken', {
+          app_id: APP_ID,
+          scope: 'video'
+        });
+        accessToken = authResult.access_token;
+      } catch (authError) {
+        console.log('Using user token from context');
+      }
 
-    <!-- Search & Sort -->
-    <div class="space-y-4 mb-6">
-        <input type="text" id="search-bar" placeholder="Search by title..." class="w-full bg-[#1c1c1e] border border-[#3a3a3c] rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500">
-        
-        <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            <select id="sort-select" class="bg-[#1c1c1e] border border-[#3a3a3c] rounded-lg px-3 py-2 text-sm outline-none">
-                <option value="date-new">Date: Newest</option>
-                <option value="date-old">Date: Oldest</option>
-                <option value="dur-long">Length: Longest</option>
-                <option value="dur-short">Length: Shortest</option>
-                <option value="views">Most Views</option>
-            </select>
+      // Fetch liked videos
+      const result = await window.vkBridge.send('VKWebAppCallAPIMethod', {
+        method: 'fave.getVideos',
+        params: {
+          v: '5.131',
+          count: 100,
+          offset: 0,
+          extended: 1
+        }
+      });
 
-            <select id="res-filter" class="bg-[#1c1c1e] border border-[#3a3a3c] rounded-lg px-3 py-2 text-sm outline-none">
-                <option value="all">Any Quality</option>
-                <option value="4k">4K / UHD</option>
-                <option value="1080">1080p</option>
-                <option value="720">720p</option>
-                <option value="480">480p</option>
-            </select>
+      if (result.response && result.response.items) {
+        const formattedVideos = result.response.items.map(video => {
+          // Determine resolution based on video dimensions
+          let resolution = '480p';
+          if (video.width) {
+            if (video.width >= 3840) resolution = '4K';
+            else if (video.width >= 1920) resolution = '1080p';
+            else if (video.width >= 1280) resolution = '720p';
+          }
 
-            <div id="len-chips" class="flex gap-2">
-                <div class="filter-chip active" data-len="all">All</div>
-                <div class="filter-chip" data-len="short">Short (&lt;5m)</div>
-                <div class="filter-chip" data-len="med">Medium</div>
-                <div class="filter-chip" data-len="long">Long (20m+)</div>
+          // Get best quality thumbnail
+          const thumbnail = video.image?.[video.image.length - 1]?.url || 
+                           video.photo_320 || 
+                           video.photo_640 ||
+                           'https://via.placeholder.com/320x180/667eea/ffffff?text=No+Preview';
+
+          return {
+            id: `${video.owner_id}_${video.id}`,
+            vk_id: video.id,
+            owner_id: video.owner_id,
+            title: video.title || 'Untitled Video',
+            duration: video.duration || 0,
+            views: video.views || 0,
+            date: new Date(video.date * 1000),
+            thumbnail: thumbnail,
+            resolution: resolution,
+            owner_name: video.owner_title || 'Unknown',
+            description: video.description || '',
+            player: video.player,
+            width: video.width,
+            height: video.height,
+            added_date: video.added_date ? new Date(video.added_date * 1000) : null
+          };
+        });
+
+        setVideos(formattedVideos);
+        setFilteredVideos(formattedVideos);
+      } else {
+        setError('No videos found in your liked videos.');
+      }
+    } catch (err) {
+      console.error('Error fetching videos:', err);
+      setError(`Failed to fetch videos: ${err.message}`);
+      
+      // Load sample data as fallback for testing
+      loadSampleData();
+    }
+    
+    setLoading(false);
+  };
+
+  // Sample data for testing outside VK environment
+  const loadSampleData = () => {
+    const sampleVideos = [
+      {
+        id: "sample_1",
+        vk_id: 1,
+        owner_id: -1,
+        title: "Amazing Nature Documentary",
+        duration: 3600,
+        views: 125000,
+        date: new Date('2024-01-15'),
+        thumbnail: "https://via.placeholder.com/320x180/667eea/ffffff?text=Video+1",
+        resolution: "1080p",
+        owner_name: "Nature Channel",
+        description: "Explore the beauty of nature",
+        width: 1920,
+        height: 1080
+      },
+      {
+        id: "sample_2",
+        vk_id: 2,
+        owner_id: -2,
+        title: "Cooking Tutorial: Italian Pasta",
+        duration: 900,
+        views: 45000,
+        date: new Date('2024-02-20'),
+        thumbnail: "https://via.placeholder.com/320x180/764ba2/ffffff?text=Video+2",
+        resolution: "720p",
+        owner_name: "Chef's Kitchen",
+        description: "Learn to make authentic Italian pasta",
+        width: 1280,
+        height: 720
+      },
+      {
+        id: "sample_3",
+        vk_id: 3,
+        owner_id: -3,
+        title: "Tech Review: Latest Smartphone",
+        duration: 1200,
+        views: 89000,
+        date: new Date('2024-03-10'),
+        thumbnail: "https://via.placeholder.com/320x180/f093fb/ffffff?text=Video+3",
+        resolution: "4K",
+        owner_name: "Tech Reviews",
+        description: "Comprehensive smartphone review",
+        width: 3840,
+        height: 2160
+      },
+      {
+        id: "sample_4",
+        vk_id: 4,
+        owner_id: -4,
+        title: "Workout Routine for Beginners",
+        duration: 1800,
+        views: 67000,
+        date: new Date('2024-01-25'),
+        thumbnail: "https://via.placeholder.com/320x180/4facfe/ffffff?text=Video+4",
+        resolution: "1080p",
+        owner_name: "Fitness Pro",
+        description: "Get fit with this beginner routine",
+        width: 1920,
+        height: 1080
+      },
+      {
+        id: "sample_5",
+        vk_id: 5,
+        owner_id: -5,
+        title: "Travel Vlog: Japan Adventure",
+        duration: 2400,
+        views: 156000,
+        date: new Date('2024-02-05'),
+        thumbnail: "https://via.placeholder.com/320x180/00f2fe/ffffff?text=Video+5",
+        resolution: "4K",
+        owner_name: "Travel Stories",
+        description: "Exploring the streets of Tokyo",
+        width: 3840,
+        height: 2160
+      }
+    ];
+    setVideos(sampleVideos);
+    setFilteredVideos(sampleVideos);
+  };
+
+  // Format duration to readable time
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Open video in VK
+  const openVideo = (video) => {
+    if (window.vkBridge && video.owner_id && video.vk_id) {
+      window.vkBridge.send('VKWebAppOpenApp', {
+        app_id: 6446047,
+        location: `video${video.owner_id}_${video.vk_id}`
+      }).catch(() => {
+        // Fallback to opening URL
+        if (video.player) {
+          window.open(video.player, '_blank');
+        } else {
+          window.open(`https://vk.com/video${video.owner_id}_${video.vk_id}`, '_blank');
+        }
+      });
+    } else if (video.player) {
+      window.open(video.player, '_blank');
+    }
+  };
+
+  // Apply filters and sorting
+  useEffect(() => {
+    let result = [...videos];
+
+    // Search filter
+    if (searchTerm) {
+      result = result.filter(video =>
+        video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.owner_name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Duration filters
+    if (filters.minDuration) {
+      result = result.filter(video => video.duration >= parseInt(filters.minDuration) * 60);
+    }
+    if (filters.maxDuration) {
+      result = result.filter(video => video.duration <= parseInt(filters.maxDuration) * 60);
+    }
+
+    // Views filter
+    if (filters.minViews) {
+      result = result.filter(video => video.views >= parseInt(filters.minViews));
+    }
+
+    // Resolution filter
+    if (filters.resolution !== 'all') {
+      result = result.filter(video => video.resolution === filters.resolution);
+    }
+
+    // Date filters
+    if (filters.dateFrom) {
+      result = result.filter(video => video.date >= new Date(filters.dateFrom));
+    }
+    if (filters.dateTo) {
+      result = result.filter(video => video.date <= new Date(filters.dateTo));
+    }
+
+    // Sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'duration':
+          comparison = a.duration - b.duration;
+          break;
+        case 'views':
+          comparison = a.views - b.views;
+          break;
+        case 'date':
+          comparison = a.date - b.date;
+          break;
+        default:
+          comparison = 0;
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    setFilteredVideos(result);
+  }, [videos, searchTerm, filters, sortBy, sortOrder]);
+
+  const clearFilters = () => {
+    setFilters({
+      minDuration: '',
+      maxDuration: '',
+      minViews: '',
+      resolution: 'all',
+      dateFrom: '',
+      dateTo: ''
+    });
+    setSearchTerm('');
+  };
+
+  const exportData = () => {
+    const dataStr = JSON.stringify(filteredVideos, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vk-liked-videos-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 p-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow-2xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+              <Video className="text-purple-600" size={36} />
+              My Liked Videos
+            </h1>
+            <button
+              onClick={fetchLikedVideos}
+              disabled={loading}
+              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          {/* Error Display */}
+          {error && (
+            <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg flex items-start gap-3">
+              <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
+              <div>
+                <p className="text-yellow-800 font-medium">Notice</p>
+                <p className="text-yellow-700 text-sm">{error}</p>
+                {!vkBridgeReady && (
+                  <p className="text-yellow-600 text-xs mt-2">
+                    Running in demo mode with sample data. Deploy to VK to see your real videos.
+                  </p>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* Search Bar */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              placeholder="Search by title, description, or channel..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Controls */}
+          <div className="flex flex-wrap gap-4 items-center">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 transition"
+            >
+              <SlidersHorizontal size={18} />
+              Filters
+            </button>
+
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">Sort by:</label>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+              >
+                <option value="date">Date</option>
+                <option value="title">Title</option>
+                <option value="duration">Duration</option>
+                <option value="views">Views</option>
+              </select>
+
+              <button
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                <ArrowUpDown size={18} />
+              </button>
+            </div>
+
+            <button
+              onClick={exportData}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition ml-auto"
+            >
+              <Download size={18} />
+              Export
+            </button>
+          </div>
+
+          {/* Filter Panel */}
+          {showFilters && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Min Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.minDuration}
+                    onChange={(e) => setFilters({...filters, minDuration: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.maxDuration}
+                    onChange={(e) => setFilters({...filters, maxDuration: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                    placeholder="∞"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Min Views
+                  </label>
+                  <input
+                    type="number"
+                    value={filters.minViews}
+                    onChange={(e) => setFilters({...filters, minViews: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Resolution
+                  </label>
+                  <select
+                    value={filters.resolution}
+                    onChange={(e) => setFilters({...filters, resolution: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                  >
+                    <option value="all">All</option>
+                    <option value="4K">4K</option>
+                    <option value="1080p">1080p</option>
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date From
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date To
+                  </label>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
+                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={clearFilters}
+                className="mt-4 text-purple-600 hover:text-purple-700 font-medium"
+              >
+                Clear all filters
+              </button>
+            </div>
+          )}
+
+          {/* Results Count */}
+          <div className="mt-4 text-sm text-gray-600">
+            Showing {filteredVideos.length} of {videos.length} videos
+          </div>
         </div>
-    </div>
 
-    <!-- Grid -->
-    <div id="video-grid" class="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <!-- Videos rendered here -->
-    </div>
+        {/* Video Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredVideos.map((video) => (
+            <div
+              key={video.id}
+              className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-1"
+            >
+              <div className="relative">
+                <img
+                  src={video.thumbnail}
+                  alt={video.title}
+                  className="w-full h-48 object-cover"
+                />
+                <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
+                  <Clock size={14} />
+                  {formatDuration(video.duration)}
+                </div>
+                <div className="absolute top-2 right-2 bg-purple-600 text-white px-2 py-1 rounded text-xs font-bold">
+                  {video.resolution}
+                </div>
+              </div>
 
-    <div id="loading-overlay" class="hidden text-center py-10 bg-black/80 fixed inset-0 z-50 flex flex-col items-center justify-center p-6">
-        <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p id="loading-text" class="text-gray-200 font-medium">Requesting permissions...</p>
-        <div id="error-details" class="hidden w-full max-w-sm">
-            <p class="text-red-400 text-sm mt-4">Technical Error Details:</p>
-            <pre id="error-log" class="error-pre"></pre>
-            <button onclick="location.reload()" class="mt-4 text-xs text-blue-400 underline">Refresh and try again</button>
+              <div className="p-4">
+                <h3 className="font-bold text-lg text-gray-800 mb-2 line-clamp-2">
+                  {video.title}
+                </h3>
+                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                  {video.description}
+                </p>
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <span>{video.owner_name}</span>
+                  <span className="flex items-center gap-1">
+                    <PlayCircle size={14} />
+                    {video.views.toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-gray-400">
+                  {video.date.toLocaleDateString()}
+                </div>
+                <button 
+                  onClick={() => openVideo(video)}
+                  className="mt-3 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
+                >
+                  <PlayCircle size={18} />
+                  Watch Video
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+
+        {filteredVideos.length === 0 && !loading && (
+          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+            <Video size={64} className="mx-auto text-gray-300 mb-4" />
+            <h3 className="text-xl font-bold text-gray-800 mb-2">No videos found</h3>
+            <p className="text-gray-600">Try adjusting your filters or search terms</p>
+          </div>
+        )}
+      </div>
     </div>
-</div>
+  );
+};
 
-<script>
-    const APP_ID = 53969951; 
-    let indexedVideos = [];
-    let accessToken = '';
-
-    const grid = document.getElementById('video-grid');
-    const indexBtn = document.getElementById('index-btn');
-    const statsText = document.getElementById('stats-text');
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const loadingText = document.getElementById('loading-text');
-    const errorDetails = document.getElementById('error-details');
-    const errorLog = document.getElementById('error-log');
-    const searchBar = document.getElementById('search-bar');
-    const sortSelect = document.getElementById('sort-select');
-    const resFilter = document.getElementById('res-filter');
-    const lenChips = document.querySelectorAll('.filter-chip');
-
-    vkBridge.send('VKWebAppInit').catch(e => console.error("Init failed", e));
-
-    async function init() {
-        try {
-            const cached = localStorage.getItem('indexed_liked_videos');
-            if (cached) {
-                indexedVideos = JSON.parse(cached);
-                updateStats();
-                applyFilters();
-            }
-        } catch (e) {
-            console.error("Cache load failed", e);
-        }
-    }
-
-    indexBtn.addEventListener('click', async () => {
-        indexBtn.disabled = true;
-        loadingOverlay.classList.remove('hidden');
-        errorDetails.classList.add('hidden');
-        loadingText.innerText = "Requesting access token...";
-        
-        try {
-            const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
-                app_id: APP_ID, 
-                scope: 'video,fave,offline'
-            });
-
-            if (!auth.access_token) {
-                throw new Error("No access token returned by VK Bridge");
-            }
-            
-            accessToken = auth.access_token;
-            grid.innerHTML = '';
-            let allItems = [];
-            let offset = 0;
-            let hasMore = true;
-
-            // TROUBLESHOOTING MODE: Only fetch 1 batch of 10
-            while (hasMore) {
-                loadingText.innerText = `Fetching test batch... (Found ${allItems.length})`;
-                
-                const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                    method: 'fave.get',
-                    params: { 
-                        item_type: 'video', 
-                        count: 10, // Small count for troubleshooting
-                        offset: offset, 
-                        extended: 1, 
-                        v: '5.131', 
-                        access_token: accessToken 
-                    }
-                });
-
-                if (response.error_type || response.error_data) {
-                    throw response;
-                }
-
-                const rawItems = response.response?.items || [];
-                if (rawItems.length === 0) {
-                    hasMore = false;
-                } else {
-                    const videos = rawItems
-                        .map(item => item.video || item)
-                        .filter(v => v && v.id);
-                    
-                    allItems = allItems.concat(videos);
-                    offset += 10;
-                    
-                    // STOP after 10 videos for troubleshooting
-                    if (offset >= 10) hasMore = false;
-                }
-            }
-
-            if (allItems.length === 0) {
-                loadingText.innerText = "No liked videos found in API response.";
-                setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
-            } else {
-                indexedVideos = allItems;
-                localStorage.setItem('indexed_liked_videos', JSON.stringify(indexedVideos));
-                updateStats();
-                applyFilters();
-                loadingOverlay.classList.add('hidden');
-            }
-
-        } catch (e) {
-            console.error("Troubleshooting Error:", e);
-            loadingText.innerText = "Operation Failed";
-            errorDetails.classList.remove('hidden');
-            errorLog.innerText = JSON.stringify(e, null, 2);
-        } finally {
-            indexBtn.disabled = false;
-        }
-    });
-
-    function updateStats() {
-        statsText.innerText = `Total: ${indexedVideos.length} videos indexed (Test Mode)`;
-    }
-
-    function formatDuration(sec) {
-        if (!sec) return "0:00";
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        const s = sec % 60;
-        return h > 0 ? `${h}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}` : `${m}:${s.toString().padStart(2,'0')}`;
-    }
-
-    function getResolution(v) {
-        const w = v.width || 0;
-        const h = v.height || 0;
-        if (w >= 3840 || h >= 2160) return "4K";
-        if (w >= 1920 || h >= 1080) return "1080p";
-        if (w >= 1280 || h >= 720) return "720p";
-        if (h >= 480) return "480p";
-        return h ? h + "p" : "";
-    }
-
-    function render(list) {
-        if (list.length === 0 && indexedVideos.length > 0) {
-            grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">No match for current filters.</div>';
-            return;
-        }
-        grid.innerHTML = list.map(v => {
-            const thumb = v.image?.sort((a,b) => b.width - a.width)[0]?.url || v.photo_320 || v.photo_130 || '';
-            const res = getResolution(v);
-            return `
-                <a href="https://vk.com/video${v.owner_id}_${v.id}" target="_blank" class="video-card block overflow-hidden">
-                    <div class="relative">
-                        <img src="${thumb}" class="w-full aspect-video object-cover bg-gray-900" onerror="this.src='https://placehold.co/400x225/1c1c1e/3a3a3c?text=No+Preview'">
-                        <div class="absolute bottom-2 right-2 flex gap-1">
-                            ${res ? `<span class="badge bg-blue-600 text-white">${res}</span>` : ''}
-                            <span class="badge text-white">${formatDuration(v.duration)}</span>
-                        </div>
-                    </div>
-                    <div class="p-3">
-                        <h3 class="text-sm font-medium line-clamp-2 mb-1">${v.title || 'Untitled Video'}</h3>
-                        <p class="text-xs text-gray-500">${Number(v.views || 0).toLocaleString()} views</p>
-                    </div>
-                </a>
-            `;
-        }).join('');
-    }
-
-    function applyFilters() {
-        let list = [...indexedVideos];
-        const query = searchBar.value.toLowerCase();
-        if (query) list = list.filter(v => (v.title || '').toLowerCase().includes(query));
-
-        const resVal = resFilter.value;
-        if (resVal !== 'all') {
-            list = list.filter(v => getResolution(v).toLowerCase().includes(resVal));
-        }
-
-        const activeChip = document.querySelector('.filter-chip.active').dataset.len;
-        if (activeChip !== 'all') {
-            list = list.filter(v => {
-                const dur = v.duration || 0;
-                if (activeChip === 'short') return dur < 300;
-                if (activeChip === 'med') return dur >= 300 && dur < 1200;
-                if (activeChip === 'long') return dur >= 1200;
-            });
-        }
-
-        const sortVal = sortSelect.value;
-        list.sort((a, b) => {
-            const dateA = a.adding_date || a.date || 0;
-            const dateB = b.adding_date || b.date || 0;
-            if (sortVal === 'date-new') return dateB - dateA;
-            if (sortVal === 'date-old') return dateA - dateB;
-            if (sortVal === 'dur-long') return (b.duration || 0) - (a.duration || 0);
-            if (sortVal === 'dur-short') return (a.duration || 0) - (b.duration || 0);
-            if (sortVal === 'views') return (b.views || 0) - (a.views || 0);
-        });
-
-        render(list);
-    }
-
-    searchBar.addEventListener('input', applyFilters);
-    sortSelect.addEventListener('change', applyFilters);
-    resFilter.addEventListener('change', applyFilters);
-    lenChips.forEach(chip => {
-        chip.addEventListener('click', () => {
-            lenChips.forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            applyFilters();
-        });
-    });
-
-    init();
-</script>
-
-</body>
-</html>
+export default VKVideoManager;
