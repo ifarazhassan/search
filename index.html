@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VK Liked Videos Manager</title>
+    <title>VK Liked Posts Manager</title>
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -45,6 +45,18 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
+        
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .fade-text {
+            mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+        }
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -52,14 +64,14 @@
         const APP_CONFIG = {
             APP_ID: 53969951,
             API_VERSION: '5.199',
-            MAX_VIDEOS: 10, // Limited to 10 videos
-            BATCH_SIZE: 10, // Fetch 10 at a time
-            STORAGE_KEY: 'vk_videos_data',
+            MAX_POSTS: 50, // Increased since posts are smaller
+            BATCH_SIZE: 20,
+            STORAGE_KEY: 'vk_posts_data',
             INDEXED_KEY: 'vk_last_indexed'
         };
         
-        let allVideos = [];
-        let filteredVideos = [];
+        let allPosts = [];
+        let filteredPosts = [];
         let isIndexing = false;
         let accessToken = null;
         let userId = null;
@@ -69,15 +81,15 @@
         <header class="mb-8">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 class="text-3xl font-bold text-white">VK Liked Videos</h1>
-                    <p class="text-gray-400 mt-2">Manage and filter your liked videos</p>
+                    <h1 class="text-3xl font-bold text-white">VK Liked Posts</h1>
+                    <p class="text-gray-400 mt-2">Manage and filter your liked posts</p>
                 </div>
                 
                 <div class="bg-[#1c1c1e] rounded-xl p-4 min-w-[200px]">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-gray-400 text-sm">Videos</p>
-                            <p id="video-count" class="text-2xl font-semibold">0</p>
+                            <p class="text-gray-400 text-sm">Posts</p>
+                            <p id="post-count" class="text-2xl font-semibold">0</p>
                         </div>
                         <div class="text-right">
                             <p class="text-gray-400 text-sm">Last Updated</p>
@@ -95,7 +107,7 @@
                         <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span id="index-text">Load Liked Videos</span>
+                        <span id="index-text">Load Liked Posts</span>
                     </button>
                     
                     <button id="clear-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition">
@@ -114,7 +126,7 @@
                 
                 <div class="flex-1 max-w-lg">
                     <div class="relative">
-                        <input id="search-input" type="text" placeholder="Search videos..." class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600">
+                        <input id="search-input" type="text" placeholder="Search posts..." class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600">
                         <svg class="w-5 h-5 text-gray-500 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
@@ -124,15 +136,14 @@
             
             <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
-                    <label class="block text-gray-400 text-sm mb-2">Resolution</label>
+                    <label class="block text-gray-400 text-sm mb-2">Post Type</label>
                     <div class="relative">
-                        <select id="resolution-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600">
-                            <option value="all">All Resolutions</option>
-                            <option value="4K">4K</option>
-                            <option value="1080p">1080p</option>
-                            <option value="720p">720p</option>
-                            <option value="480p">480p</option>
-                            <option value="360p">360p</option>
+                        <select id="type-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600">
+                            <option value="all">All Types</option>
+                            <option value="text">Text Only</option>
+                            <option value="photo">With Photos</option>
+                            <option value="link">With Links</option>
+                            <option value="video">With Videos</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -143,16 +154,16 @@
                 </div>
                 
                 <div>
-                    <label class="block text-gray-400 text-sm mb-2">Duration</label>
+                    <label class="block text-gray-400 text-sm mb-2">Date Range</label>
                     <div class="flex gap-2">
-                        <button data-duration="short" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            Short (&lt;5m)
+                        <button data-date="week" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            This Week
                         </button>
-                        <button data-duration="medium" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            Medium (5-20m)
+                        <button data-date="month" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            This Month
                         </button>
-                        <button data-duration="long" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            Long (&gt;20m)
+                        <button data-date="year" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            This Year
                         </button>
                     </div>
                 </div>
@@ -161,11 +172,10 @@
                     <label class="block text-gray-400 text-sm mb-2">Sort By</label>
                     <div class="relative">
                         <select id="sort-options" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600">
-                            <option value="newest">Newest</option>
-                            <option value="oldest">Oldest</option>
-                            <option value="longest">Longest</option>
-                            <option value="shortest">Shortest</option>
-                            <option value="most-viewed">Most Viewed</option>
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="most-liked">Most Liked</option>
+                            <option value="most-commented">Most Comments</option>
                         </select>
                         <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,7 +188,7 @@
                 <div class="flex items-end">
                     <div class="bg-black rounded-xl p-4 w-full">
                         <p class="text-gray-400 text-sm">Showing</p>
-                        <p id="results-count" class="text-xl font-semibold">0 videos</p>
+                        <p id="results-count" class="text-xl font-semibold">0 posts</p>
                     </div>
                 </div>
             </div>
@@ -195,16 +205,16 @@
             </div>
         </div>
 
-        <div id="videos-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
+        <div id="posts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
             <div id="empty-state" class="col-span-full text-center py-16">
                 <div class="bg-[#1c1c1e] rounded-2xl p-12 max-w-2xl mx-auto">
                     <svg class="w-20 h-20 text-gray-700 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                     </svg>
-                    <h3 class="text-2xl font-bold text-white mb-3">No Videos</h3>
-                    <p class="text-gray-400 mb-8">Load your liked videos to get started</p>
+                    <h3 class="text-2xl font-bold text-white mb-3">No Posts Found</h3>
+                    <p class="text-gray-400 mb-8">Load your liked posts to get started</p>
                     <button id="empty-index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl">
-                        Load Liked Videos
+                        Load Liked Posts
                     </button>
                 </div>
             </div>
@@ -238,7 +248,7 @@
                 <div class="flex items-center justify-center mb-6">
                     <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full spinner"></div>
                 </div>
-                <h3 class="text-xl font-bold text-white text-center mb-2">Loading Videos</h3>
+                <h3 class="text-xl font-bold text-white text-center mb-2">Loading Posts</h3>
                 <p id="loading-message" class="text-gray-400 text-center mb-6">Please wait...</p>
                 
                 <div class="mb-4">
@@ -266,12 +276,12 @@
         const clearBtn = document.getElementById('clear-btn');
         const emptyIndexBtn = document.getElementById('empty-index-btn');
         const searchInput = document.getElementById('search-input');
-        const resolutionFilter = document.getElementById('resolution-filter');
-        const durationChips = document.querySelectorAll('.duration-chip');
+        const typeFilter = document.getElementById('type-filter');
+        const dateChips = document.querySelectorAll('.date-chip');
         const sortOptions = document.getElementById('sort-options');
-        const videosContainer = document.getElementById('videos-container');
+        const postsContainer = document.getElementById('posts-container');
         const emptyState = document.getElementById('empty-state');
-        const videoCount = document.getElementById('video-count');
+        const postCount = document.getElementById('post-count');
         const lastUpdated = document.getElementById('last-updated');
         const resultsCount = document.getElementById('results-count');
         const progressContainer = document.getElementById('progress-container');
@@ -293,7 +303,7 @@
         const activeSearchText = document.getElementById('active-search-text');
         
         // State
-        let activeDurationFilter = null;
+        let activeDateFilter = null;
         let activeSearchTerm = '';
         
         // Initialize
@@ -322,14 +332,14 @@
             
             if (cachedData) {
                 try {
-                    allVideos = JSON.parse(cachedData);
-                    filteredVideos = [...allVideos];
-                    updateVideoCount();
+                    allPosts = JSON.parse(cachedData);
+                    filteredPosts = [...allPosts];
+                    updatePostCount();
                     updateLastUpdated(lastIndexed);
-                    renderVideos();
+                    renderPosts();
                     updateResultsCount();
                     
-                    if (allVideos.length > 0) {
+                    if (allPosts.length > 0) {
                         emptyState.classList.add('hidden');
                     }
                 } catch (e) {
@@ -338,149 +348,237 @@
             }
         }
         
-        function updateVideoCount() {
-            videoCount.textContent = allVideos.length.toLocaleString();
+        function updatePostCount() {
+            postCount.textContent = allPosts.length.toLocaleString();
         }
         
         function updateLastUpdated(timestamp) {
             if (timestamp) {
                 const date = new Date(parseInt(timestamp));
-                lastUpdated.textContent = date.toLocaleDateString();
+                lastUpdated.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             } else {
                 lastUpdated.textContent = 'Never';
             }
         }
         
         function updateResultsCount() {
-            const count = filteredVideos.length;
-            resultsCount.textContent = `${count} ${count === 1 ? 'video' : 'videos'}`;
-        }
-        
-        function getResolution(width, height) {
-            if (!width || !height) return 'Unknown';
-            const pixels = width * height;
-            if (pixels >= 3840 * 2160) return '4K';
-            if (pixels >= 1920 * 1080) return '1080p';
-            if (pixels >= 1280 * 720) return '720p';
-            if (pixels >= 854 * 480) return '480p';
-            if (pixels >= 640 * 360) return '360p';
-            return 'Other';
-        }
-        
-        function formatDuration(seconds) {
-            if (!seconds) return '0:00';
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            if (hours > 0) {
-                return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            } else {
-                return `${minutes}:${secs.toString().padStart(2, '0')}`;
-            }
-        }
-        
-        function formatViews(views) {
-            if (!views) return '0';
-            if (views >= 1000000) return (views / 1000000).toFixed(1) + 'M';
-            if (views >= 1000) return (views / 1000).toFixed(1) + 'K';
-            return views.toString();
+            const count = filteredPosts.length;
+            resultsCount.textContent = `${count} ${count === 1 ? 'post' : 'posts'}`;
         }
         
         function formatDate(timestamp) {
             const date = new Date(timestamp * 1000);
             const now = new Date();
             const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-            if (diffDays === 0) return 'Today';
+            
+            if (diffDays === 0) {
+                const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+                if (diffHours === 0) {
+                    const diffMinutes = Math.floor((now - date) / (1000 * 60));
+                    return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+                }
+                return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+            }
+            
             if (diffDays === 1) return 'Yesterday';
             if (diffDays < 7) return `${diffDays} days ago`;
             if (diffDays < 30) {
                 const weeks = Math.floor(diffDays / 7);
-                return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+                return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
             }
             return date.toLocaleDateString();
         }
         
-        // Get liked videos using fave.get API
-        async function getLikedVideos() {
+        function formatNumber(num) {
+            if (!num) return '0';
+            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+            return num.toString();
+        }
+        
+        function stripHtml(html) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            return tmp.textContent || tmp.innerText || '';
+        }
+        
+        // Get liked posts using fave.getPosts API
+        async function getLikedPosts() {
             console.log('Getting access token...');
             
-            // Get access token with favorites permission
-            loadingMessage.textContent = 'Requesting favorites permission...';
+            // Get access token with wall/favorites permission
+            loadingMessage.textContent = 'Requesting permissions...';
             const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
                 app_id: APP_CONFIG.APP_ID,
-                scope: 'favorites'
+                scope: 'wall,favorites'  // Try wall permission for posts
             });
             
             if (!tokenResponse || !tokenResponse.access_token) {
-                throw new Error('Failed to get access token. Please grant favorites permission.');
+                throw new Error('Failed to get access token. Please grant wall/favorites permission.');
             }
             
             accessToken = tokenResponse.access_token;
             console.log('Got access token');
             
-            loadingMessage.textContent = 'Fetching your liked videos...';
+            loadingMessage.textContent = 'Fetching your liked posts...';
             
-            // Use fave.get to get ALL liked videos (not just your own)
+            const posts = [];
+            let offset = 0;
+            let hasMore = true;
+            
+            while (hasMore && posts.length < APP_CONFIG.MAX_POSTS) {
+                try {
+                    console.log(`Fetching posts batch at offset ${offset}`);
+                    
+                    // Try to get liked posts using newsfeed.get with filters
+                    const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                        method: 'newsfeed.get',
+                        params: {
+                            filters: 'post',  // Get only posts
+                            count: APP_CONFIG.BATCH_SIZE,
+                            offset: offset,
+                            extended: 1,
+                            access_token: accessToken,
+                            v: APP_CONFIG.API_VERSION
+                        }
+                    });
+                    
+                    console.log('API Response:', response);
+                    
+                    if (response.error) {
+                        console.error('API Error:', response.error);
+                        
+                        // Alternative: Try fave.getPosts if available
+                        if (response.error.error_code === 15) {
+                            // Try alternative method - get user's wall and check likes
+                            return getPostsFromWall();
+                        }
+                        
+                        throw new Error(`API Error: ${response.error.error_msg}`);
+                    }
+                    
+                    if (response.response && response.response.items) {
+                        const items = response.response.items;
+                        
+                        if (items.length === 0) {
+                            hasMore = false;
+                            break;
+                        }
+                        
+                        // Process posts that are liked by current user
+                        for (const item of items) {
+                            if (item.likes && item.likes.user_likes === 1) {
+                                const postData = {
+                                    id: item.id,
+                                    owner_id: item.owner_id,
+                                    from_id: item.from_id,
+                                    date: item.date,
+                                    text: item.text || '',
+                                    likes: item.likes.count || 0,
+                                    comments: item.comments ? item.comments.count : 0,
+                                    reposts: item.reposts ? item.reposts.count : 0,
+                                    views: item.views ? item.views.count : 0,
+                                    post_type: item.post_type || 'post',
+                                    attachments: item.attachments || [],
+                                    copy_history: item.copy_history || []
+                                };
+                                
+                                // Determine post type
+                                postData.content_type = determinePostType(postData);
+                                postData.has_media = postData.attachments.length > 0;
+                                
+                                posts.push(postData);
+                            }
+                        }
+                        
+                        offset += items.length;
+                        
+                        // Update progress
+                        const progress = Math.min(100, Math.round((posts.length / APP_CONFIG.MAX_POSTS) * 100));
+                        updateLoadingProgress(progress, posts.length);
+                        
+                        if (items.length < APP_CONFIG.BATCH_SIZE) {
+                            hasMore = false;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                    
+                } catch (error) {
+                    console.error('Batch error:', error);
+                    throw error;
+                }
+            }
+            
+            return posts;
+        }
+        
+        // Alternative method: Get posts from user's wall
+        async function getPostsFromWall() {
+            console.log('Trying to get posts from wall...');
+            
             const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                method: 'fave.get',
+                method: 'wall.get',
                 params: {
-                    item_type: 'video',
-                    count: APP_CONFIG.MAX_VIDEOS, // Only get 10 videos
+                    owner_id: userId,
+                    count: APP_CONFIG.MAX_POSTS,
                     extended: 1,
                     access_token: accessToken,
                     v: APP_CONFIG.API_VERSION
                 }
             });
             
-            console.log('fave.get API Response:', response);
-            
             if (response.error) {
-                console.error('API Error:', response.error);
-                throw new Error(`API Error: ${response.error.error_msg} (Code: ${response.error.error_code})`);
+                throw new Error(`Wall API Error: ${response.error.error_msg}`);
             }
             
-            if (!response.response || !response.response.items) {
-                throw new Error('No videos found in response');
-            }
+            const posts = [];
             
-            const items = response.response.items;
-            console.log(`Found ${items.length} liked videos`);
-            
-            const videos = [];
-            
-            // Process each liked video
-            for (const item of items) {
-                // fave.get returns items with video data inside
-                if (item.type === 'video' && item.video) {
-                    const video = item.video;
-                    
-                    const videoData = {
-                        id: video.id || video.video_id,
-                        owner_id: video.owner_id,
-                        title: video.title || 'Untitled Video',
-                        description: video.description || '',
-                        duration: video.duration || 0,
-                        views: video.views || 0,
-                        date: video.date || Math.floor(Date.now() / 1000),
-                        width: video.width || 0,
-                        height: video.height || 0,
-                        image: video.image || video.thumb || video.photo_320 || video.photo_130 || [],
-                        player: video.player,
-                        access_key: video.access_key,
-                        adding_date: item.adding_date || video.date,
-                        // fave.get includes when you added it to favorites
-                        added_date: item.date || item.adding_date
+            if (response.response && response.response.items) {
+                for (const item of response.response.items) {
+                    const postData = {
+                        id: item.id,
+                        owner_id: item.owner_id,
+                        from_id: item.from_id,
+                        date: item.date,
+                        text: item.text || '',
+                        likes: item.likes ? item.likes.count : 0,
+                        comments: item.comments ? item.comments.count : 0,
+                        reposts: item.reposts ? item.reposts.count : 0,
+                        post_type: item.post_type || 'post',
+                        attachments: item.attachments || [],
+                        is_liked: item.likes ? item.likes.user_likes : 0
                     };
                     
-                    videoData.resolution = getResolution(videoData.width, videoData.height);
-                    videos.push(videoData);
+                    // Only include liked posts
+                    if (postData.is_liked) {
+                        postData.content_type = determinePostType(postData);
+                        postData.has_media = postData.attachments.length > 0;
+                        posts.push(postData);
+                    }
                 }
             }
             
-            return videos;
+            return posts;
         }
         
-        async function indexVideos() {
+        function determinePostType(post) {
+            if (!post.attachments || post.attachments.length === 0) {
+                return 'text';
+            }
+            
+            const attachmentTypes = post.attachments.map(a => a.type);
+            
+            if (attachmentTypes.includes('photo')) return 'photo';
+            if (attachmentTypes.includes('video')) return 'video';
+            if (attachmentTypes.includes('link')) return 'link';
+            if (attachmentTypes.includes('audio')) return 'audio';
+            if (attachmentTypes.includes('doc')) return 'doc';
+            
+            return 'text';
+        }
+        
+        async function indexPosts() {
             if (isIndexing) return;
             
             isIndexing = true;
@@ -496,34 +594,34 @@
             errorPanel.classList.add('hidden');
             
             try {
-                console.log('Starting to fetch liked videos...');
+                console.log('Starting to fetch liked posts...');
                 
-                const fetchedVideos = await getLikedVideos();
+                const fetchedPosts = await getLikedPosts();
                 
-                console.log(`Successfully fetched ${fetchedVideos.length} liked videos`);
+                console.log(`Successfully fetched ${fetchedPosts.length} liked posts`);
                 
-                if (fetchedVideos.length > 0) {
-                    allVideos = fetchedVideos;
-                    filteredVideos = [...allVideos];
+                if (fetchedPosts.length > 0) {
+                    allPosts = fetchedPosts;
+                    filteredPosts = [...allPosts];
                     
-                    localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allVideos));
+                    localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allPosts));
                     localStorage.setItem(APP_CONFIG.INDEXED_KEY, Date.now().toString());
                     
-                    updateVideoCount();
+                    updatePostCount();
                     updateLastUpdated(Date.now().toString());
-                    renderVideos();
+                    renderPosts();
                     updateResultsCount();
                     
                     emptyState.classList.add('hidden');
                     
-                    loadingMessage.textContent = `Loaded ${fetchedVideos.length} liked videos!`;
+                    loadingMessage.textContent = `Loaded ${fetchedPosts.length} liked posts!`;
                     loadingStats.textContent = 'Success!';
                     
                     // Update progress to 100%
-                    updateLoadingProgress(100, fetchedVideos.length);
+                    updateLoadingProgress(100, fetchedPosts.length);
                 } else {
-                    loadingMessage.textContent = 'No liked videos found';
-                    loadingStats.textContent = 'Try liking some videos first';
+                    loadingMessage.textContent = 'No liked posts found';
+                    loadingStats.textContent = 'Try liking some posts first';
                     
                     // Load demo data for testing
                     loadDemoData();
@@ -534,18 +632,18 @@
                 }, 1500);
                 
             } catch (error) {
-                console.error('Failed to fetch liked videos:', error);
-                showError('Failed to load liked videos', error);
+                console.error('Failed to fetch liked posts:', error);
+                showError('Failed to load liked posts', error);
                 loadingOverlay.classList.add('hidden');
                 
                 // Load demo data if real data fails
-                if (allVideos.length === 0) {
+                if (allPosts.length === 0) {
                     loadDemoData();
                 }
             } finally {
                 isIndexing = false;
                 indexBtn.disabled = false;
-                indexText.textContent = 'Load Liked Videos';
+                indexText.textContent = 'Load Liked Posts';
                 indexSpinner.classList.add('hidden');
                 progressContainer.classList.add('hidden');
             }
@@ -555,100 +653,107 @@
         function loadDemoData() {
             console.log('Loading demo data for testing...');
             
-            const demoVideos = [
+            const demoPosts = [
                 {
-                    id: 456239019,
+                    id: 1,
                     owner_id: -123456,
-                    title: 'Beautiful Nature Documentary from VK',
-                    duration: 634,
-                    views: 1250000,
-                    date: Math.floor(Date.now() / 1000) - 86400,
-                    width: 1920,
-                    height: 1080,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Nature+Doc', width: 320, height: 180 }],
-                    resolution: '1080p',
-                    added_date: Math.floor(Date.now() / 1000) - 86400
+                    from_id: 123456,
+                    date: Math.floor(Date.now() / 1000) - 3600,
+                    text: 'Just watched an amazing documentary about space exploration. The visuals were breathtaking!',
+                    likes: 245,
+                    comments: 42,
+                    reposts: 15,
+                    content_type: 'text',
+                    has_media: false
                 },
                 {
-                    id: 456239020,
+                    id: 2,
                     owner_id: -789012,
-                    title: 'Tech Tutorial: Advanced JavaScript',
-                    duration: 875,
-                    views: 85000,
-                    date: Math.floor(Date.now() / 1000) - 172800,
-                    width: 1280,
-                    height: 720,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Tech+Tutorial', width: 320, height: 180 }],
-                    resolution: '720p',
-                    added_date: Math.floor(Date.now() / 1000) - 172800
+                    from_id: 789012,
+                    date: Math.floor(Date.now() / 1000) - 7200,
+                    text: 'Check out this beautiful sunset from my hike yesterday! Nature never ceases to amaze me.',
+                    likes: 512,
+                    comments: 67,
+                    reposts: 31,
+                    content_type: 'photo',
+                    has_media: true
                 },
                 {
-                    id: 456239021,
+                    id: 3,
                     owner_id: -345678,
-                    title: 'Music Performance Live Concert',
-                    duration: 245,
-                    views: 250000,
-                    date: Math.floor(Date.now() / 1000) - 259200,
-                    width: 3840,
-                    height: 2160,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Live+Music', width: 320, height: 180 }],
-                    resolution: '4K',
-                    added_date: Math.floor(Date.now() / 1000) - 259200
+                    from_id: 345678,
+                    date: Math.floor(Date.now() / 1000) - 86400,
+                    text: 'Found this interesting article about AI advancements. Definitely worth a read! https://example.com/ai-article',
+                    likes: 189,
+                    comments: 23,
+                    reposts: 9,
+                    content_type: 'link',
+                    has_media: false
                 },
                 {
-                    id: 456239022,
+                    id: 4,
                     owner_id: -901234,
-                    title: 'Cooking Recipe: Italian Pasta',
-                    duration: 420,
-                    views: 150000,
-                    date: Math.floor(Date.now() / 1000) - 345600,
-                    width: 854,
-                    height: 480,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Cooking+Show', width: 320, height: 180 }],
-                    resolution: '480p',
-                    added_date: Math.floor(Date.now() / 1000) - 345600
+                    from_id: 901234,
+                    date: Math.floor(Date.now() / 1000) - 172800,
+                    text: 'Music recommendation: New album just dropped and it\'s fantastic! Perfect for coding sessions.',
+                    likes: 321,
+                    comments: 45,
+                    reposts: 18,
+                    content_type: 'audio',
+                    has_media: false
                 },
                 {
-                    id: 456239023,
+                    id: 5,
                     owner_id: -567890,
-                    title: 'Travel Vlog: Japan Adventure',
-                    duration: 1120,
-                    views: 320000,
-                    date: Math.floor(Date.now() / 1000) - 432000,
-                    width: 1920,
-                    height: 1080,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Travel+Vlog', width: 320, height: 180 }],
-                    resolution: '1080p',
-                    added_date: Math.floor(Date.now() / 1000) - 432000
+                    from_id: 567890,
+                    date: Math.floor(Date.now() / 1000) - 259200,
+                    text: 'Tutorial: How to build a VK Mini App from scratch. Step by step guide for beginners.',
+                    likes: 432,
+                    comments: 89,
+                    reposts: 27,
+                    content_type: 'text',
+                    has_media: false
+                },
+                {
+                    id: 6,
+                    owner_id: -112233,
+                    from_id: 112233,
+                    date: Math.floor(Date.now() / 1000) - 345600,
+                    text: 'Funny cat video that made my day! 🐱',
+                    likes: 876,
+                    comments: 123,
+                    reposts: 54,
+                    content_type: 'video',
+                    has_media: true
                 }
             ];
             
-            allVideos = demoVideos;
-            filteredVideos = [...allVideos];
+            allPosts = demoPosts;
+            filteredPosts = [...allPosts];
             
-            localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allVideos));
+            localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allPosts));
             localStorage.setItem(APP_CONFIG.INDEXED_KEY, Date.now().toString());
             
-            updateVideoCount();
+            updatePostCount();
             updateLastUpdated(Date.now().toString());
-            renderVideos();
+            renderPosts();
             updateResultsCount();
             
             emptyState.classList.add('hidden');
             
-            showError('Using demo data. Enable "favorites" permission for real data.', 
-                     new Error('The app needs "favorites" permission to access your liked videos. Go to VK App Settings > Permissions and enable it.'));
+            showError('Using demo data. Enable "wall" permission for real data.', 
+                     new Error('The app needs "wall" permission to access your liked posts.'));
         }
         
         function updateLoadingProgress(percent, count) {
             loadingProgress.textContent = `${percent}%`;
             loadingBar.style.width = `${percent}%`;
-            loadingStats.textContent = `Found ${count} videos`;
+            loadingStats.textContent = `Found ${count} posts`;
             
             if (count > 0) {
                 progressContainer.classList.remove('hidden');
                 progressBar.style.width = `${percent}%`;
-                progressText.textContent = `${count} videos`;
+                progressText.textContent = `${count} posts`;
             }
         }
         
@@ -660,7 +765,7 @@
                     message: error.message,
                     timestamp: new Date().toISOString(),
                     userId: userId,
-                    suggestion: 'Make sure "favorites" permission is enabled in VK app settings'
+                    suggestion: 'Make sure "wall" and "favorites" permissions are enabled'
                 }, null, 2);
             }
             
@@ -668,137 +773,161 @@
             progressContainer.classList.add('hidden');
         }
         
-        function renderVideos() {
-            videosContainer.innerHTML = '';
+        function getPostTypeColor(type) {
+            switch(type) {
+                case 'photo': return 'bg-green-600';
+                case 'video': return 'bg-purple-600';
+                case 'link': return 'bg-yellow-600';
+                case 'audio': return 'bg-pink-600';
+                case 'doc': return 'bg-orange-600';
+                default: return 'bg-blue-600';
+            }
+        }
+        
+        function getPostTypeIcon(type) {
+            switch(type) {
+                case 'photo': return '📷';
+                case 'video': return '🎥';
+                case 'link': return '🔗';
+                case 'audio': return '🎵';
+                case 'doc': return '📄';
+                default: return '📝';
+            }
+        }
+        
+        function renderPosts() {
+            postsContainer.innerHTML = '';
             
-            if (filteredVideos.length === 0) {
+            if (filteredPosts.length === 0) {
                 emptyState.classList.remove('hidden');
                 return;
             }
             
             emptyState.classList.add('hidden');
             
-            filteredVideos.forEach(video => {
+            filteredPosts.forEach(post => {
                 const card = document.createElement('div');
                 card.className = 'bg-[#1c1c1e] rounded-2xl overflow-hidden hover:scale-[1.02] transition-transform';
                 
-                let thumbnail = '';
-                if (Array.isArray(video.image) && video.image.length > 0) {
-                    // Get the first available thumbnail
-                    const firstImage = video.image.find(img => img && img.url);
-                    if (firstImage) {
-                        thumbnail = firstImage.url;
-                    }
-                }
+                const postTypeColor = getPostTypeColor(post.content_type);
+                const postTypeIcon = getPostTypeIcon(post.content_type);
                 
-                const durationCategory = video.duration < 300 ? 'short' : 
-                                       video.duration < 1200 ? 'medium' : 'long';
-                
-                const resolutionColor = getResolutionColor(video.resolution);
+                // Truncate text for display
+                const displayText = post.text.length > 200 ? 
+                    post.text.substring(0, 200) + '...' : post.text;
                 
                 card.innerHTML = `
-                    <div class="relative">
-                        ${thumbnail ? 
-                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\"w-full h-48 bg-gray-900 flex items-center justify-center\"><svg class=\"w-12 h-12 text-gray-700\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\"></path></svg></div>';">` :
-                            `<div class="w-full h-48 bg-gray-900 flex items-center justify-center">
-                                <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                                </svg>
-                            </div>`
-                        }
-                        <div class="absolute top-3 right-3 bg-black/80 text-white text-xs font-medium py-1 px-2 rounded">
-                            ${formatDuration(video.duration)}
-                        </div>
-                        <div class="absolute top-3 left-3 bg-${resolutionColor} text-white text-xs font-medium py-1 px-2 rounded">
-                            ${video.resolution}
-                        </div>
-                    </div>
-                    <div class="p-4">
-                        <h3 class="font-semibold text-white text-lg mb-2 line-clamp-2">${video.title}</h3>
-                        <div class="flex justify-between text-gray-400 text-sm mb-3">
-                            <div class="flex items-center gap-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                </svg>
-                                <span>${formatViews(video.views)} views</span>
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                                </svg>
-                                <span>${formatDate(video.added_date || video.date)}</span>
+                    <div class="p-6">
+                        <div class="flex items-start justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
+                                    <span class="text-lg">${postTypeIcon}</span>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-white font-medium">Post #${post.id}</span>
+                                        <span class="text-xs px-2 py-1 rounded-full ${postTypeColor}">
+                                            ${post.content_type.toUpperCase()}
+                                        </span>
+                                    </div>
+                                    <p class="text-gray-400 text-sm">${formatDate(post.date)}</p>
+                                </div>
                             </div>
                         </div>
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs px-3 py-1 rounded-full ${getDurationCategoryColor(durationCategory)}">
-                                ${durationCategory.charAt(0).toUpperCase() + durationCategory.slice(1)}
-                            </span>
-                            <a href="https://vk.com/video${video.owner_id}_${video.id}${video.access_key ? '?access_key=' + video.access_key : ''}" 
-                               target="_blank" 
-                               class="text-blue-400 hover:text-blue-300 text-sm font-medium">
-                                Open in VK
-                            </a>
+                        
+                        <div class="mb-4">
+                            <div class="text-gray-300 line-clamp-3 fade-text">
+                                ${displayText.replace(/\n/g, '<br>')}
+                            </div>
+                            ${post.text.length > 200 ? '<p class="text-blue-400 text-sm mt-2">Read more</p>' : ''}
+                        </div>
+                        
+                        ${post.has_media ? `
+                            <div class="mb-4 p-3 bg-black/50 rounded-lg">
+                                <div class="flex items-center gap-2 text-gray-400">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                    </svg>
+                                    <span class="text-sm">Contains media</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        
+                        <div class="flex items-center justify-between pt-4 border-t border-gray-800">
+                            <div class="flex items-center gap-4">
+                                <div class="flex items-center gap-1">
+                                    <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                                    </svg>
+                                    <span class="text-gray-300">${formatNumber(post.likes)}</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                                    </svg>
+                                    <span class="text-gray-300">${formatNumber(post.comments)}</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
+                                    </svg>
+                                    <span class="text-gray-300">${formatNumber(post.reposts)}</span>
+                                </div>
+                            </div>
+                            <button class="text-blue-400 hover:text-blue-300 text-sm font-medium">
+                                View Post
+                            </button>
                         </div>
                     </div>
                 `;
                 
-                videosContainer.appendChild(card);
+                postsContainer.appendChild(card);
             });
             
             updateResultsCount();
         }
         
-        function getResolutionColor(resolution) {
-            switch(resolution) {
-                case '4K': return 'purple-600';
-                case '1080p': return 'green-600';
-                case '720p': return 'blue-600';
-                case '480p': return 'yellow-600';
-                default: return 'gray-600';
-            }
-        }
-        
-        function getDurationCategoryColor(category) {
-            switch(category) {
-                case 'short': return 'bg-green-900/30 text-green-400';
-                case 'medium': return 'bg-yellow-900/30 text-yellow-400';
-                case 'long': return 'bg-red-900/30 text-red-400';
-                default: return 'bg-gray-900/30 text-gray-400';
-            }
-        }
-        
-        function filterVideos() {
-            if (allVideos.length === 0) {
-                filteredVideos = [];
-                renderVideos();
+        function filterPosts() {
+            if (allPosts.length === 0) {
+                filteredPosts = [];
+                renderPosts();
                 return;
             }
             
-            filteredVideos = allVideos.filter(video => {
+            const now = Math.floor(Date.now() / 1000);
+            
+            filteredPosts = allPosts.filter(post => {
+                // Search filter
                 if (activeSearchTerm && activeSearchTerm.trim() !== '') {
                     const searchTerm = activeSearchTerm.toLowerCase();
-                    if (!video.title.toLowerCase().includes(searchTerm)) {
+                    if (!post.text.toLowerCase().includes(searchTerm)) {
                         return false;
                     }
                 }
                 
-                const selectedResolution = resolutionFilter.value;
-                if (selectedResolution !== 'all' && video.resolution !== selectedResolution) {
-                    return false;
+                // Type filter
+                const selectedType = typeFilter.value;
+                if (selectedType !== 'all') {
+                    if (selectedType === 'text' && post.content_type !== 'text') return false;
+                    if (selectedType === 'photo' && post.content_type !== 'photo') return false;
+                    if (selectedType === 'video' && post.content_type !== 'video') return false;
+                    if (selectedType === 'link' && post.content_type !== 'link') return false;
                 }
                 
-                if (activeDurationFilter) {
-                    const duration = video.duration;
-                    switch(activeDurationFilter) {
-                        case 'short':
-                            if (duration >= 300) return false;
+                // Date filter
+                if (activeDateFilter) {
+                    const postDate = post.date;
+                    const daysDiff = (now - postDate) / (60 * 60 * 24);
+                    
+                    switch(activeDateFilter) {
+                        case 'week':
+                            if (daysDiff > 7) return false;
                             break;
-                        case 'medium':
-                            if (duration < 300 || duration > 1200) return false;
+                        case 'month':
+                            if (daysDiff > 30) return false;
                             break;
-                        case 'long':
-                            if (duration <= 1200) return false;
+                        case 'year':
+                            if (daysDiff > 365) return false;
                             break;
                     }
                 }
@@ -806,26 +935,24 @@
                 return true;
             });
             
-            sortVideos();
-            renderVideos();
+            sortPosts();
+            renderPosts();
             updateActiveFiltersDisplay();
         }
         
-        function sortVideos() {
+        function sortPosts() {
             const sortBy = sortOptions.value;
             
-            filteredVideos.sort((a, b) => {
+            filteredPosts.sort((a, b) => {
                 switch(sortBy) {
                     case 'newest':
-                        return (b.added_date || b.date) - (a.added_date || a.date);
+                        return b.date - a.date;
                     case 'oldest':
-                        return (a.added_date || a.date) - (b.added_date || b.date);
-                    case 'longest':
-                        return b.duration - a.duration;
-                    case 'shortest':
-                        return a.duration - b.duration;
-                    case 'most-viewed':
-                        return b.views - a.views;
+                        return a.date - b.date;
+                    case 'most-liked':
+                        return b.likes - a.likes;
+                    case 'most-commented':
+                        return b.comments - a.comments;
                     default:
                         return 0;
                 }
@@ -842,29 +969,29 @@
         }
         
         // Event Listeners
-        indexBtn.addEventListener('click', indexVideos);
-        emptyIndexBtn.addEventListener('click', indexVideos);
+        indexBtn.addEventListener('click', indexPosts);
+        emptyIndexBtn.addEventListener('click', indexPosts);
         
         clearBtn.addEventListener('click', function() {
             if (confirm('Clear all cached data?')) {
                 localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
                 localStorage.removeItem(APP_CONFIG.INDEXED_KEY);
-                allVideos = [];
-                filteredVideos = [];
-                updateVideoCount();
+                allPosts = [];
+                filteredPosts = [];
+                updatePostCount();
                 updateLastUpdated(null);
-                renderVideos();
+                renderPosts();
                 updateResultsCount();
                 emptyState.classList.remove('hidden');
                 
                 searchInput.value = '';
-                resolutionFilter.value = 'all';
-                activeDurationFilter = null;
+                typeFilter.value = 'all';
+                activeDateFilter = null;
                 sortOptions.value = 'newest';
                 
-                durationChips.forEach(chip => {
+                dateChips.forEach(chip => {
                     chip.setAttribute('data-active', 'false');
-                    chip.className = 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                    chip.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
                 });
                 
                 activeFilters.classList.add('hidden');
@@ -873,46 +1000,46 @@
         
         searchInput.addEventListener('input', function() {
             activeSearchTerm = this.value;
-            filterVideos();
+            filterPosts();
         });
         
         clearSearch.addEventListener('click', function() {
             searchInput.value = '';
             activeSearchTerm = '';
-            filterVideos();
+            filterPosts();
         });
         
-        resolutionFilter.addEventListener('change', filterVideos);
+        typeFilter.addEventListener('change', filterPosts);
         
-        durationChips.forEach(chip => {
+        dateChips.forEach(chip => {
             chip.addEventListener('click', function() {
-                const duration = this.getAttribute('data-duration');
+                const dateRange = this.getAttribute('data-date');
                 
-                if (activeDurationFilter === duration) {
-                    activeDurationFilter = null;
+                if (activeDateFilter === dateRange) {
+                    activeDateFilter = null;
                     this.setAttribute('data-active', 'false');
-                    this.className = 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                    this.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
                 } else {
-                    activeDurationFilter = duration;
+                    activeDateFilter = dateRange;
                     
-                    durationChips.forEach(c => {
+                    dateChips.forEach(c => {
                         if (c === this) {
                             c.setAttribute('data-active', 'true');
-                            c.className = 'duration-chip bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-xl text-sm transition';
+                            c.className = 'date-chip bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-xl text-sm transition';
                         } else {
                             c.setAttribute('data-active', 'false');
-                            c.className = 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                            c.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
                         }
                     });
                 }
                 
-                filterVideos();
+                filterPosts();
             });
         });
         
         sortOptions.addEventListener('change', function() {
-            sortVideos();
-            renderVideos();
+            sortPosts();
+            renderPosts();
         });
         
         hideError.addEventListener('click', function() {
