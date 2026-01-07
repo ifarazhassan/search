@@ -1,584 +1,973 @@
-import React, { useState, useEffect } from 'react';
-import { Search, SlidersHorizontal, PlayCircle, Clock, Video, ArrowUpDown, RefreshCw, Download, AlertCircle } from 'lucide-react';
-
-const VKVideoManager = () => {
-  const [videos, setVideos] = useState([]);
-  const [filteredVideos, setFilteredVideos] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('date');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [showFilters, setShowFilters] = useState(false);
-  const [vkBridgeReady, setVkBridgeReady] = useState(false);
-  
-  const APP_ID = 53969951;
-  
-  // Filter states
-  const [filters, setFilters] = useState({
-    minDuration: '',
-    maxDuration: '',
-    minViews: '',
-    resolution: 'all',
-    dateFrom: '',
-    dateTo: ''
-  });
-
-  // Initialize VK Bridge
-  useEffect(() => {
-    const initVK = async () => {
-      try {
-        // Check if VK Bridge is available
-        if (window.vkBridge) {
-          await window.vkBridge.send('VKWebAppInit');
-          setVkBridgeReady(true);
-          
-          // Auto-fetch videos on load
-          fetchLikedVideos();
-        } else {
-          setError('VK Bridge not available. Please run this app inside VK.');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VK Liked Videos Manager</title>
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom dark theme enhancements */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         }
-      } catch (err) {
-        console.error('VK initialization error:', err);
-        setError('Failed to initialize VK Bridge: ' + err.message);
-      }
-    };
-    
-    initVK();
-  }, []);
-
-  // Fetch liked videos from VK API
-  const fetchLikedVideos = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // First, get auth token if needed
-      let accessToken = null;
-      
-      try {
-        const authResult = await window.vkBridge.send('VKWebAppGetAuthToken', {
-          app_id: APP_ID,
-          scope: 'video'
-        });
-        accessToken = authResult.access_token;
-      } catch (authError) {
-        console.log('Using user token from context');
-      }
-
-      // Fetch liked videos
-      const result = await window.vkBridge.send('VKWebAppCallAPIMethod', {
-        method: 'fave.getVideos',
-        params: {
-          v: '5.131',
-          count: 100,
-          offset: 0,
-          extended: 1
+        
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
         }
-      });
-
-      if (result.response && result.response.items) {
-        const formattedVideos = result.response.items.map(video => {
-          // Determine resolution based on video dimensions
-          let resolution = '480p';
-          if (video.width) {
-            if (video.width >= 3840) resolution = '4K';
-            else if (video.width >= 1920) resolution = '1080p';
-            else if (video.width >= 1280) resolution = '720p';
-          }
-
-          // Get best quality thumbnail
-          const thumbnail = video.image?.[video.image.length - 1]?.url || 
-                           video.photo_320 || 
-                           video.photo_640 ||
-                           'https://via.placeholder.com/320x180/667eea/ffffff?text=No+Preview';
-
-          return {
-            id: `${video.owner_id}_${video.id}`,
-            vk_id: video.id,
-            owner_id: video.owner_id,
-            title: video.title || 'Untitled Video',
-            duration: video.duration || 0,
-            views: video.views || 0,
-            date: new Date(video.date * 1000),
-            thumbnail: thumbnail,
-            resolution: resolution,
-            owner_name: video.owner_title || 'Unknown',
-            description: video.description || '',
-            player: video.player,
-            width: video.width,
-            height: video.height,
-            added_date: video.added_date ? new Date(video.added_date * 1000) : null
-          };
-        });
-
-        setVideos(formattedVideos);
-        setFilteredVideos(formattedVideos);
-      } else {
-        setError('No videos found in your liked videos.');
-      }
-    } catch (err) {
-      console.error('Error fetching videos:', err);
-      setError(`Failed to fetch videos: ${err.message}`);
-      
-      // Load sample data as fallback for testing
-      loadSampleData();
-    }
-    
-    setLoading(false);
-  };
-
-  // Sample data for testing outside VK environment
-  const loadSampleData = () => {
-    const sampleVideos = [
-      {
-        id: "sample_1",
-        vk_id: 1,
-        owner_id: -1,
-        title: "Amazing Nature Documentary",
-        duration: 3600,
-        views: 125000,
-        date: new Date('2024-01-15'),
-        thumbnail: "https://via.placeholder.com/320x180/667eea/ffffff?text=Video+1",
-        resolution: "1080p",
-        owner_name: "Nature Channel",
-        description: "Explore the beauty of nature",
-        width: 1920,
-        height: 1080
-      },
-      {
-        id: "sample_2",
-        vk_id: 2,
-        owner_id: -2,
-        title: "Cooking Tutorial: Italian Pasta",
-        duration: 900,
-        views: 45000,
-        date: new Date('2024-02-20'),
-        thumbnail: "https://via.placeholder.com/320x180/764ba2/ffffff?text=Video+2",
-        resolution: "720p",
-        owner_name: "Chef's Kitchen",
-        description: "Learn to make authentic Italian pasta",
-        width: 1280,
-        height: 720
-      },
-      {
-        id: "sample_3",
-        vk_id: 3,
-        owner_id: -3,
-        title: "Tech Review: Latest Smartphone",
-        duration: 1200,
-        views: 89000,
-        date: new Date('2024-03-10'),
-        thumbnail: "https://via.placeholder.com/320x180/f093fb/ffffff?text=Video+3",
-        resolution: "4K",
-        owner_name: "Tech Reviews",
-        description: "Comprehensive smartphone review",
-        width: 3840,
-        height: 2160
-      },
-      {
-        id: "sample_4",
-        vk_id: 4,
-        owner_id: -4,
-        title: "Workout Routine for Beginners",
-        duration: 1800,
-        views: 67000,
-        date: new Date('2024-01-25'),
-        thumbnail: "https://via.placeholder.com/320x180/4facfe/ffffff?text=Video+4",
-        resolution: "1080p",
-        owner_name: "Fitness Pro",
-        description: "Get fit with this beginner routine",
-        width: 1920,
-        height: 1080
-      },
-      {
-        id: "sample_5",
-        vk_id: 5,
-        owner_id: -5,
-        title: "Travel Vlog: Japan Adventure",
-        duration: 2400,
-        views: 156000,
-        date: new Date('2024-02-05'),
-        thumbnail: "https://via.placeholder.com/320x180/00f2fe/ffffff?text=Video+5",
-        resolution: "4K",
-        owner_name: "Travel Stories",
-        description: "Exploring the streets of Tokyo",
-        width: 3840,
-        height: 2160
-      }
-    ];
-    setVideos(sampleVideos);
-    setFilteredVideos(sampleVideos);
-  };
-
-  // Format duration to readable time
-  const formatDuration = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Open video in VK
-  const openVideo = (video) => {
-    if (window.vkBridge && video.owner_id && video.vk_id) {
-      window.vkBridge.send('VKWebAppOpenApp', {
-        app_id: 6446047,
-        location: `video${video.owner_id}_${video.vk_id}`
-      }).catch(() => {
-        // Fallback to opening URL
-        if (video.player) {
-          window.open(video.player, '_blank');
-        } else {
-          window.open(`https://vk.com/video${video.owner_id}_${video.vk_id}`, '_blank');
+        
+        ::-webkit-scrollbar-track {
+            background: #1c1c1e;
         }
-      });
-    } else if (video.player) {
-      window.open(video.player, '_blank');
-    }
-  };
+        
+        ::-webkit-scrollbar-thumb {
+            background: #3a3a3c;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #48484a;
+        }
+        
+        /* Animation for loading spinner */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        /* Smooth transitions */
+        .video-card, .chip, .dropdown-item, button {
+            transition: all 0.2s ease-in-out;
+        }
+        
+        /* Hide scrollbar but keep functionality */
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-black text-white min-h-screen">
+    <!-- App Configuration (Top of Script) -->
+    <script>
+        // App Configuration
+        const APP_CONFIG = {
+            APP_ID: 53969951, // Replace with your actual VK Mini App ID
+            API_VERSION: '5.199',
+            MAX_VIDEOS_TO_FETCH: 1000,
+            BATCH_SIZE: 50,
+            STORAGE_KEY: 'vk_liked_videos_data',
+            INDEXED_DATE_KEY: 'vk_videos_last_indexed'
+        };
+        
+        // Global state
+        let allVideos = [];
+        let filteredVideos = [];
+        let isIndexing = false;
+        let currentOffset = 0;
+        let totalVideosFetched = 0;
+        let indexingError = null;
+    </script>
 
-  // Apply filters and sorting
-  useEffect(() => {
-    let result = [...videos];
-
-    // Search filter
-    if (searchTerm) {
-      result = result.filter(video =>
-        video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        video.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        video.owner_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Duration filters
-    if (filters.minDuration) {
-      result = result.filter(video => video.duration >= parseInt(filters.minDuration) * 60);
-    }
-    if (filters.maxDuration) {
-      result = result.filter(video => video.duration <= parseInt(filters.maxDuration) * 60);
-    }
-
-    // Views filter
-    if (filters.minViews) {
-      result = result.filter(video => video.views >= parseInt(filters.minViews));
-    }
-
-    // Resolution filter
-    if (filters.resolution !== 'all') {
-      result = result.filter(video => video.resolution === filters.resolution);
-    }
-
-    // Date filters
-    if (filters.dateFrom) {
-      result = result.filter(video => video.date >= new Date(filters.dateFrom));
-    }
-    if (filters.dateTo) {
-      result = result.filter(video => video.date <= new Date(filters.dateTo));
-    }
-
-    // Sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'title':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'duration':
-          comparison = a.duration - b.duration;
-          break;
-        case 'views':
-          comparison = a.views - b.views;
-          break;
-        case 'date':
-          comparison = a.date - b.date;
-          break;
-        default:
-          comparison = 0;
-      }
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    setFilteredVideos(result);
-  }, [videos, searchTerm, filters, sortBy, sortOrder]);
-
-  const clearFilters = () => {
-    setFilters({
-      minDuration: '',
-      maxDuration: '',
-      minViews: '',
-      resolution: 'all',
-      dateFrom: '',
-      dateTo: ''
-    });
-    setSearchTerm('');
-  };
-
-  const exportData = () => {
-    const dataStr = JSON.stringify(filteredVideos, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `vk-liked-videos-${new Date().toISOString().split('T')[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-2xl shadow-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-              <Video className="text-purple-600" size={36} />
-              My Liked Videos
-            </h1>
-            <button
-              onClick={fetchLikedVideos}
-              disabled={loading}
-              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
-            >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
-          </div>
-
-          {/* Error Display */}
-          {error && (
-            <div className="mb-4 p-4 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg flex items-start gap-3">
-              <AlertCircle className="text-yellow-600 flex-shrink-0 mt-0.5" size={20} />
-              <div>
-                <p className="text-yellow-800 font-medium">Notice</p>
-                <p className="text-yellow-700 text-sm">{error}</p>
-                {!vkBridgeReady && (
-                  <p className="text-yellow-600 text-xs mt-2">
-                    Running in demo mode with sample data. Deploy to VK to see your real videos.
-                  </p>
-                )}
-              </div>
+    <!-- Main App Container -->
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 class="text-3xl font-bold text-white">Liked Videos Manager</h1>
+                    <p class="text-gray-400 mt-2">Index and filter your liked videos from VK</p>
+                </div>
+                
+                <div id="stats" class="bg-[#1c1c1e] rounded-xl p-4 min-w-[200px]">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-400 text-sm">Videos Indexed</p>
+                            <p id="video-count" class="text-2xl font-semibold">0</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-gray-400 text-sm">Last Updated</p>
+                            <p id="last-updated" class="text-sm">Never</p>
+                        </div>
+                    </div>
+                </div>
             </div>
-          )}
+        </header>
 
-          {/* Search Bar */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search by title, description, or channel..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-purple-600 focus:outline-none"
-            />
-          </div>
-
-          {/* Controls */}
-          <div className="flex flex-wrap gap-4 items-center">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200 transition"
-            >
-              <SlidersHorizontal size={18} />
-              Filters
-            </button>
-
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-gray-700">Sort by:</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-              >
-                <option value="date">Date</option>
-                <option value="title">Title</option>
-                <option value="duration">Duration</option>
-                <option value="views">Views</option>
-              </select>
-
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
-                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-              >
-                <ArrowUpDown size={18} />
-              </button>
+        <!-- Control Panel -->
+        <div class="bg-[#1c1c1e] rounded-2xl p-6 mb-8 shadow-xl">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <!-- Indexing Section -->
+                <div class="flex items-center gap-4">
+                    <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-xl flex items-center gap-2 transition">
+                        <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span id="index-text">Index Videos</span>
+                    </button>
+                    
+                    <button id="clear-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition">
+                        Clear Cache
+                    </button>
+                    
+                    <div id="progress-container" class="hidden flex-1">
+                        <div class="flex items-center gap-3">
+                            <div class="w-full bg-gray-800 rounded-full h-2.5">
+                                <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                            </div>
+                            <span id="progress-text" class="text-sm text-gray-400 whitespace-nowrap">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Search Box -->
+                <div class="flex-1 max-w-lg">
+                    <div class="relative">
+                        <input id="search-input" type="text" placeholder="Search video titles..." class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600">
+                        <svg class="w-5 h-5 text-gray-500 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </div>
+                </div>
             </div>
-
-            <button
-              onClick={exportData}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition ml-auto"
-            >
-              <Download size={18} />
-              Export
-            </button>
-          </div>
-
-          {/* Filter Panel */}
-          {showFilters && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-200">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <!-- Filter and Sort Controls -->
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Resolution Filter -->
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Min Duration (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    value={filters.minDuration}
-                    onChange={(e) => setFilters({...filters, minDuration: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                    placeholder="0"
-                  />
+                    <label class="block text-gray-400 text-sm mb-2">Resolution</label>
+                    <div class="relative">
+                        <select id="resolution-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600">
+                            <option value="all">All Resolutions</option>
+                            <option value="4K">4K (Ultra HD)</option>
+                            <option value="1080p">1080p (Full HD)</option>
+                            <option value="720p">720p (HD)</option>
+                            <option value="480p">480p (SD)</option>
+                            <option value="360p">360p</option>
+                            <option value="240p">240p</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
                 </div>
-
+                
+                <!-- Duration Filter -->
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Max Duration (minutes)
-                  </label>
-                  <input
-                    type="number"
-                    value={filters.maxDuration}
-                    onChange={(e) => setFilters({...filters, maxDuration: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                    placeholder="∞"
-                  />
+                    <label class="block text-gray-400 text-sm mb-2">Duration</label>
+                    <div class="flex gap-2">
+                        <button data-duration="short" class="duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            Short (&lt;5 min)
+                        </button>
+                        <button data-duration="medium" class="duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            Medium (5-20 min)
+                        </button>
+                        <button data-duration="long" class="duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
+                            Long (&gt;20 min)
+                        </button>
+                    </div>
                 </div>
-
+                
+                <!-- Sort Options -->
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Min Views
-                  </label>
-                  <input
-                    type="number"
-                    value={filters.minViews}
-                    onChange={(e) => setFilters({...filters, minViews: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                    placeholder="0"
-                  />
+                    <label class="block text-gray-400 text-sm mb-2">Sort By</label>
+                    <div class="relative">
+                        <select id="sort-options" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="longest">Longest Duration</option>
+                            <option value="shortest">Shortest Duration</option>
+                            <option value="most-viewed">Most Viewed</option>
+                            <option value="least-viewed">Least Viewed</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Resolution
-                  </label>
-                  <select
-                    value={filters.resolution}
-                    onChange={(e) => setFilters({...filters, resolution: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                  >
-                    <option value="all">All</option>
-                    <option value="4K">4K</option>
-                    <option value="1080p">1080p</option>
-                    <option value="720p">720p</option>
-                    <option value="480p">480p</option>
-                  </select>
+                
+                <!-- Results Counter -->
+                <div class="flex items-end">
+                    <div class="bg-black rounded-xl p-4 w-full">
+                        <p class="text-gray-400 text-sm">Showing</p>
+                        <p id="results-count" class="text-xl font-semibold">0 videos</p>
+                    </div>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date From
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date To
-                  </label>
-                  <input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
-                    className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 focus:border-purple-600 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <button
-                onClick={clearFilters}
-                className="mt-4 text-purple-600 hover:text-purple-700 font-medium"
-              >
-                Clear all filters
-              </button>
             </div>
-          )}
-
-          {/* Results Count */}
-          <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredVideos.length} of {videos.length} videos
-          </div>
+            
+            <!-- Active Filters Display -->
+            <div id="active-filters" class="mt-6 flex flex-wrap gap-2 hidden">
+                <div class="bg-blue-900/30 text-blue-400 py-1 px-3 rounded-full text-sm flex items-center gap-2">
+                    <span id="active-search-text"></span>
+                    <button id="clear-search" class="text-blue-300 hover:text-white">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <!-- Active filters will be dynamically added here -->
+            </div>
         </div>
 
-        {/* Video Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredVideos.map((video) => (
-            <div
-              key={video.id}
-              className="bg-white rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all transform hover:-translate-y-1"
-            >
-              <div className="relative">
-                <img
-                  src={video.thumbnail}
-                  alt={video.title}
-                  className="w-full h-48 object-cover"
-                />
-                <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white px-2 py-1 rounded text-sm flex items-center gap-1">
-                  <Clock size={14} />
-                  {formatDuration(video.duration)}
+        <!-- Videos Grid -->
+        <div id="videos-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
+            <!-- Video cards will be dynamically inserted here -->
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="col-span-full text-center py-16">
+                <div class="bg-[#1c1c1e] rounded-2xl p-12 max-w-2xl mx-auto">
+                    <svg class="w-20 h-20 text-gray-700 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    <h3 class="text-2xl font-bold text-white mb-3">No Videos Found</h3>
+                    <p class="text-gray-400 mb-8">Start by indexing your liked videos from VK to see them here.</p>
+                    <button id="empty-index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl">
+                        Index Videos
+                    </button>
                 </div>
-                <div className="absolute top-2 right-2 bg-purple-600 text-white px-2 py-1 rounded text-xs font-bold">
-                  {video.resolution}
-                </div>
-              </div>
+            </div>
+        </div>
 
-              <div className="p-4">
-                <h3 className="font-bold text-lg text-gray-800 mb-2 line-clamp-2">
-                  {video.title}
-                </h3>
-                <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                  {video.description}
-                </p>
-                <div className="flex items-center justify-between text-sm text-gray-500">
-                  <span>{video.owner_name}</span>
-                  <span className="flex items-center gap-1">
-                    <PlayCircle size={14} />
-                    {video.views.toLocaleString()}
-                  </span>
+        <!-- Error Panel (Hidden by default) -->
+        <div id="error-panel" class="bg-red-900/20 border border-red-800 rounded-2xl p-6 mb-8 hidden">
+            <div class="flex justify-between items-start">
+                <div>
+                    <h3 class="text-xl font-bold text-white mb-2">Indexing Error</h3>
+                    <p id="error-message" class="text-red-300"></p>
                 </div>
-                <div className="mt-2 text-xs text-gray-400">
-                  {video.date.toLocaleDateString()}
-                </div>
-                <button 
-                  onClick={() => openVideo(video)}
-                  className="mt-3 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition flex items-center justify-center gap-2"
-                >
-                  <PlayCircle size={18} />
-                  Watch Video
+                <button id="hide-error" class="text-red-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
                 </button>
-              </div>
             </div>
-          ))}
+            <div class="mt-4">
+                <button id="show-details" class="text-red-400 hover:text-white text-sm font-medium flex items-center gap-2">
+                    <span>Show Technical Details</span>
+                    <svg id="details-arrow" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
+                <div id="error-details" class="mt-3 p-4 bg-black/50 rounded-xl font-mono text-sm text-gray-300 hidden overflow-auto max-h-60"></div>
+            </div>
         </div>
 
-        {filteredVideos.length === 0 && !loading && (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <Video size={64} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="text-xl font-bold text-gray-800 mb-2">No videos found</h3>
-            <p className="text-gray-600">Try adjusting your filters or search terms</p>
-          </div>
-        )}
-      </div>
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 hidden">
+            <div class="bg-[#1c1c1e] rounded-2xl p-8 max-w-md w-full mx-4">
+                <div class="flex items-center justify-center mb-6">
+                    <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full spinner"></div>
+                </div>
+                <h3 class="text-xl font-bold text-white text-center mb-2">Indexing Videos</h3>
+                <p id="loading-message" class="text-gray-400 text-center mb-6">Fetching your liked videos from VK...</p>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between text-sm text-gray-400 mb-1">
+                        <span>Progress</span>
+                        <span id="loading-progress">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-800 rounded-full h-2.5">
+                        <div id="loading-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="text-center">
+                    <p id="loading-stats" class="text-gray-400 text-sm">Found 0 videos so far...</p>
+                </div>
+            </div>
+        </div>
     </div>
-  );
-};
 
-export default VKVideoManager;
+    <script>
+        // Initialize VK Bridge
+        vkBridge.send('VKWebAppInit', {});
+        
+        // DOM Elements
+        const indexBtn = document.getElementById('index-btn');
+        const indexText = document.getElementById('index-text');
+        const indexSpinner = document.getElementById('index-spinner');
+        const clearBtn = document.getElementById('clear-btn');
+        const emptyIndexBtn = document.getElementById('empty-index-btn');
+        const searchInput = document.getElementById('search-input');
+        const resolutionFilter = document.getElementById('resolution-filter');
+        const durationChips = document.querySelectorAll('.duration-chip');
+        const sortOptions = document.getElementById('sort-options');
+        const videosContainer = document.getElementById('videos-container');
+        const emptyState = document.getElementById('empty-state');
+        const videoCount = document.getElementById('video-count');
+        const lastUpdated = document.getElementById('last-updated');
+        const resultsCount = document.getElementById('results-count');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = document.getElementById('loading-message');
+        const loadingProgress = document.getElementById('loading-progress');
+        const loadingBar = document.getElementById('loading-bar');
+        const loadingStats = document.getElementById('loading-stats');
+        const errorPanel = document.getElementById('error-panel');
+        const errorMessage = document.getElementById('error-message');
+        const errorDetails = document.getElementById('error-details');
+        const hideError = document.getElementById('hide-error');
+        const showDetails = document.getElementById('show-details');
+        const detailsArrow = document.getElementById('details-arrow');
+        const activeFilters = document.getElementById('active-filters');
+        const clearSearch = document.getElementById('clear-search');
+        const activeSearchText = document.getElementById('active-search-text');
+        
+        // State for active filters
+        let activeDurationFilter = null;
+        let activeSearchTerm = '';
+        
+        // Load cached data on startup
+        function loadCachedData() {
+            const cachedData = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
+            const lastIndexed = localStorage.getItem(APP_CONFIG.INDEXED_DATE_KEY);
+            
+            if (cachedData) {
+                try {
+                    allVideos = JSON.parse(cachedData);
+                    filteredVideos = [...allVideos];
+                    updateVideoCount();
+                    updateLastUpdated(lastIndexed);
+                    renderVideos();
+                    updateResultsCount();
+                    
+                    if (allVideos.length > 0) {
+                        emptyState.classList.add('hidden');
+                    }
+                } catch (e) {
+                    console.error('Error parsing cached data:', e);
+                }
+            }
+        }
+        
+        // Update video count display
+        function updateVideoCount() {
+            videoCount.textContent = allVideos.length.toLocaleString();
+        }
+        
+        // Update last updated display
+        function updateLastUpdated(timestamp) {
+            if (timestamp) {
+                const date = new Date(parseInt(timestamp));
+                lastUpdated.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            } else {
+                lastUpdated.textContent = 'Never';
+            }
+        }
+        
+        // Update results count
+        function updateResultsCount() {
+            const count = filteredVideos.length;
+            resultsCount.textContent = `${count} ${count === 1 ? 'video' : 'videos'}`;
+        }
+        
+        // Derive resolution from width and height
+        function getResolution(width, height) {
+            if (!width || !height) return 'Unknown';
+            
+            const pixels = width * height;
+            
+            if (pixels >= 3840 * 2160) return '4K';
+            if (pixels >= 1920 * 1080) return '1080p';
+            if (pixels >= 1280 * 720) return '720p';
+            if (pixels >= 854 * 480) return '480p';
+            if (pixels >= 640 * 360) return '360p';
+            if (pixels >= 426 * 240) return '240p';
+            
+            return 'Other';
+        }
+        
+        // Format duration from seconds to readable format
+        function formatDuration(seconds) {
+            if (!seconds) return '0:00';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) {
+                return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            } else {
+                return `${minutes}:${secs.toString().padStart(2, '0')}`;
+            }
+        }
+        
+        // Format view count
+        function formatViews(views) {
+            if (!views) return '0';
+            
+            if (views >= 1000000) {
+                return (views / 1000000).toFixed(1) + 'M';
+            } else if (views >= 1000) {
+                return (views / 1000).toFixed(1) + 'K';
+            } else {
+                return views.toString();
+            }
+        }
+        
+        // Format date
+        function formatDate(timestamp) {
+            const date = new Date(timestamp * 1000);
+            const now = new Date();
+            const diffTime = Math.abs(now - date);
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 0) {
+                return 'Today';
+            } else if (diffDays === 1) {
+                return 'Yesterday';
+            } else if (diffDays < 7) {
+                return `${diffDays} days ago`;
+            } else if (diffDays < 30) {
+                const weeks = Math.floor(diffDays / 7);
+                return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+            } else {
+                return date.toLocaleDateString();
+            }
+        }
+        
+        // Index videos from VK API
+        async function indexVideos() {
+            if (isIndexing) return;
+            
+            isIndexing = true;
+            indexingError = null;
+            currentOffset = 0;
+            totalVideosFetched = 0;
+            
+            // Show loading overlay
+            loadingOverlay.classList.remove('hidden');
+            updateLoadingProgress(0, 0);
+            
+            // Update button state
+            indexBtn.disabled = true;
+            indexText.textContent = 'Indexing...';
+            indexSpinner.classList.remove('hidden');
+            
+            // Hide error panel if visible
+            errorPanel.classList.add('hidden');
+            
+            try {
+                // Initialize an empty array for videos
+                const fetchedVideos = [];
+                
+                // Start fetching loop
+                let hasMoreVideos = true;
+                
+                while (hasMoreVideos && totalVideosFetched < APP_CONFIG.MAX_VIDEOS_TO_FETCH) {
+                    try {
+                        // Call VK API to get liked videos
+                        const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                            method: 'fave.get',
+                            params: {
+                                item_type: 'video',
+                                offset: currentOffset,
+                                count: APP_CONFIG.BATCH_SIZE,
+                                v: APP_CONFIG.API_VERSION,
+                                access_token: '' // Will be automatically handled by VK Bridge
+                            }
+                        });
+                        
+                        if (response && response.response) {
+                            const videos = response.response.items;
+                            
+                            if (videos.length === 0) {
+                                hasMoreVideos = false;
+                                break;
+                            }
+                            
+                            // Process each video
+                            for (const video of videos) {
+                                const videoData = {
+                                    id: video.id || video.video_id,
+                                    owner_id: video.owner_id,
+                                    title: video.title || 'Untitled',
+                                    description: video.description || '',
+                                    duration: video.duration || 0,
+                                    views: video.views || 0,
+                                    date: video.date || Math.floor(Date.now() / 1000),
+                                    width: video.width || 0,
+                                    height: video.height || 0,
+                                    image: video.image || video.thumb || [],
+                                    player: video.player,
+                                    access_key: video.access_key
+                                };
+                                
+                                // Derive resolution
+                                videoData.resolution = getResolution(videoData.width, videoData.height);
+                                
+                                fetchedVideos.push(videoData);
+                            }
+                            
+                            totalVideosFetched += videos.length;
+                            currentOffset += APP_CONFIG.BATCH_SIZE;
+                            
+                            // Update progress
+                            const progress = Math.min(100, Math.round((totalVideosFetched / APP_CONFIG.MAX_VIDEOS_TO_FETCH) * 100));
+                            updateLoadingProgress(progress, totalVideosFetched);
+                            
+                            // If we got fewer videos than requested, we've reached the end
+                            if (videos.length < APP_CONFIG.BATCH_SIZE) {
+                                hasMoreVideos = false;
+                            }
+                        } else {
+                            throw new Error('Invalid API response format');
+                        }
+                        
+                    } catch (error) {
+                        console.error('Error fetching videos:', error);
+                        indexingError = error;
+                        showError('Failed to fetch videos from VK API', error);
+                        break;
+                    }
+                }
+                
+                // Save fetched videos to cache
+                if (fetchedVideos.length > 0) {
+                    allVideos = fetchedVideos;
+                    filteredVideos = [...allVideos];
+                    
+                    localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allVideos));
+                    localStorage.setItem(APP_CONFIG.INDEXED_DATE_KEY, Date.now().toString());
+                    
+                    updateVideoCount();
+                    updateLastUpdated(Date.now().toString());
+                    renderVideos();
+                    updateResultsCount();
+                    
+                    emptyState.classList.add('hidden');
+                }
+                
+                // Show completion message
+                loadingMessage.textContent = `Indexing complete! Found ${totalVideosFetched} videos.`;
+                loadingStats.textContent = `Successfully indexed ${totalVideosFetched} videos`;
+                
+                // Wait a moment before hiding overlay
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                }, 1500);
+                
+            } catch (error) {
+                console.error('Indexing failed:', error);
+                indexingError = error;
+                showError('Indexing process failed', error);
+                loadingOverlay.classList.add('hidden');
+            } finally {
+                isIndexing = false;
+                indexBtn.disabled = false;
+                indexText.textContent = 'Index Videos';
+                indexSpinner.classList.add('hidden');
+            }
+        }
+        
+        // Update loading progress
+        function updateLoadingProgress(percent, count) {
+            loadingProgress.textContent = `${percent}%`;
+            loadingBar.style.width = `${percent}%`;
+            loadingStats.textContent = `Found ${count} videos so far...`;
+            
+            // Also update the progress bar in control panel if visible
+            if (count > 0) {
+                progressContainer.classList.remove('hidden');
+                progressBar.style.width = `${percent}%`;
+                progressText.textContent = `${count} videos (${percent}%)`;
+            }
+        }
+        
+        // Show error panel
+        function showError(message, error) {
+            errorMessage.textContent = message;
+            
+            if (error) {
+                errorDetails.textContent = JSON.stringify({
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                }, null, 2);
+            }
+            
+            errorPanel.classList.remove('hidden');
+            
+            // Hide progress container
+            progressContainer.classList.add('hidden');
+        }
+        
+        // Render videos to the grid
+        function renderVideos() {
+            // Clear current videos
+            videosContainer.innerHTML = '';
+            
+            if (filteredVideos.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            
+            emptyState.classList.add('hidden');
+            
+            // Create video cards
+            filteredVideos.forEach(video => {
+                const card = document.createElement('div');
+                card.className = 'video-card bg-[#1c1c1e] rounded-2xl overflow-hidden hover:transform hover:scale-[1.02] transition-transform duration-300';
+                
+                // Get thumbnail (try to get the best available)
+                let thumbnail = '';
+                if (video.image && video.image.length > 0) {
+                    // Sort by width to get highest resolution
+                    const sortedImages = [...video.image].sort((a, b) => b.width - a.width);
+                    thumbnail = sortedImages[0].url;
+                }
+                
+                // Calculate duration category
+                let durationCategory = 'long';
+                if (video.duration < 300) { // < 5 minutes
+                    durationCategory = 'short';
+                } else if (video.duration < 1200) { // < 20 minutes
+                    durationCategory = 'medium';
+                }
+                
+                card.innerHTML = `
+                    <div class="relative">
+                        ${thumbnail ? 
+                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover">` :
+                            `<div class="w-full h-48 bg-gray-900 flex items-center justify-center">
+                                <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>`
+                        }
+                        <div class="absolute top-3 right-3 bg-black/80 text-white text-xs font-medium py-1 px-2 rounded">
+                            ${formatDuration(video.duration)}
+                        </div>
+                        <div class="absolute top-3 left-3 bg-${getResolutionColor(video.resolution)} text-white text-xs font-medium py-1 px-2 rounded">
+                            ${video.resolution}
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <h3 class="font-semibold text-white text-lg mb-2 line-clamp-2 h-14">${video.title}</h3>
+                        <div class="flex justify-between text-gray-400 text-sm mb-3">
+                            <div class="flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <span>${formatViews(video.views)} views</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <span>${formatDate(video.date)}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs px-3 py-1 rounded-full ${getDurationCategoryColor(durationCategory)}">
+                                ${durationCategory.charAt(0).toUpperCase() + durationCategory.slice(1)}
+                            </span>
+                            <a href="https://vk.com/video${video.owner_id}_${video.id}" target="_blank" class="text-blue-400 hover:text-blue-300 text-sm font-medium">
+                                Open in VK
+                            </a>
+                        </div>
+                    </div>
+                `;
+                
+                videosContainer.appendChild(card);
+            });
+            
+            updateResultsCount();
+        }
+        
+        // Helper function to get resolution color
+        function getResolutionColor(resolution) {
+            switch(resolution) {
+                case '4K': return 'bg-purple-600';
+                case '1080p': return 'bg-green-600';
+                case '720p': return 'bg-blue-600';
+                case '480p': return 'bg-yellow-600';
+                case '360p': return 'bg-orange-600';
+                case '240p': return 'bg-red-600';
+                default: return 'bg-gray-600';
+            }
+        }
+        
+        // Helper function to get duration category color
+        function getDurationCategoryColor(category) {
+            switch(category) {
+                case 'short': return 'bg-green-900/30 text-green-400';
+                case 'medium': return 'bg-yellow-900/30 text-yellow-400';
+                case 'long': return 'bg-red-900/30 text-red-400';
+                default: return 'bg-gray-900/30 text-gray-400';
+            }
+        }
+        
+        // Filter videos based on active filters
+        function filterVideos() {
+            if (allVideos.length === 0) {
+                filteredVideos = [];
+                renderVideos();
+                return;
+            }
+            
+            filteredVideos = allVideos.filter(video => {
+                // Apply search filter
+                if (activeSearchTerm && activeSearchTerm.trim() !== '') {
+                    const searchTerm = activeSearchTerm.toLowerCase();
+                    if (!video.title.toLowerCase().includes(searchTerm)) {
+                        return false;
+                    }
+                }
+                
+                // Apply resolution filter
+                const selectedResolution = resolutionFilter.value;
+                if (selectedResolution !== 'all' && video.resolution !== selectedResolution) {
+                    return false;
+                }
+                
+                // Apply duration filter
+                if (activeDurationFilter) {
+                    const duration = video.duration;
+                    
+                    switch(activeDurationFilter) {
+                        case 'short':
+                            if (duration >= 300) return false; // 5 minutes = 300 seconds
+                            break;
+                        case 'medium':
+                            if (duration < 300 || duration > 1200) return false; // 5-20 minutes
+                            break;
+                        case 'long':
+                            if (duration <= 1200) return false; // >20 minutes
+                            break;
+                    }
+                }
+                
+                return true;
+            });
+            
+            // Sort videos
+            sortVideos();
+            
+            // Render filtered videos
+            renderVideos();
+            updateActiveFiltersDisplay();
+        }
+        
+        // Sort videos based on selected option
+        function sortVideos() {
+            const sortBy = sortOptions.value;
+            
+            filteredVideos.sort((a, b) => {
+                switch(sortBy) {
+                    case 'newest':
+                        return b.date - a.date;
+                    case 'oldest':
+                        return a.date - b.date;
+                    case 'longest':
+                        return b.duration - a.duration;
+                    case 'shortest':
+                        return a.duration - b.duration;
+                    case 'most-viewed':
+                        return b.views - a.views;
+                    case 'least-viewed':
+                        return a.views - b.views;
+                    default:
+                        return 0;
+                }
+            });
+        }
+        
+        // Update active filters display
+        function updateActiveFiltersDisplay() {
+            // Clear existing active filters (except search)
+            const activeFilterElements = document.querySelectorAll('#active-filters > div:not(:first-child)');
+            activeFilterElements.forEach(el => el.remove());
+            
+            // Add resolution filter if active
+            if (resolutionFilter.value !== 'all') {
+                const filterChip = document.createElement('div');
+                filterChip.className = 'bg-blue-900/30 text-blue-400 py-1 px-3 rounded-full text-sm flex items-center gap-2';
+                filterChip.innerHTML = `
+                    <span>Resolution: ${resolutionFilter.options[resolutionFilter.selectedIndex].text}</span>
+                    <button class="clear-filter text-blue-300 hover:text-white" data-type="resolution">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                `;
+                activeFilters.appendChild(filterChip);
+            }
+            
+            // Add duration filter if active
+            if (activeDurationFilter) {
+                let durationText = '';
+                switch(activeDurationFilter) {
+                    case 'short': durationText = 'Short (<5 min)'; break;
+                    case 'medium': durationText = 'Medium (5-20 min)'; break;
+                    case 'long': durationText = 'Long (>20 min)'; break;
+                }
+                
+                const filterChip = document.createElement('div');
+                filterChip.className = 'bg-blue-900/30 text-blue-400 py-1 px-3 rounded-full text-sm flex items-center gap-2';
+                filterChip.innerHTML = `
+                    <span>Duration: ${durationText}</span>
+                    <button class="clear-filter text-blue-300 hover:text-white" data-type="duration">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                `;
+                activeFilters.appendChild(filterChip);
+            }
+            
+            // Update search filter display
+            if (activeSearchTerm && activeSearchTerm.trim() !== '') {
+                activeSearchText.textContent = `Search: "${activeSearchTerm}"`;
+                activeFilters.classList.remove('hidden');
+            } else if (resolutionFilter.value !== 'all' || activeDurationFilter) {
+                activeFilters.classList.remove('hidden');
+            } else {
+                activeFilters.classList.add('hidden');
+            }
+            
+            // Add event listeners to clear filter buttons
+            document.querySelectorAll('.clear-filter').forEach(button => {
+                button.addEventListener('click', function() {
+                    const filterType = this.getAttribute('data-type');
+                    
+                    if (filterType === 'resolution') {
+                        resolutionFilter.value = 'all';
+                    } else if (filterType === 'duration') {
+                        activeDurationFilter = null;
+                        durationChips.forEach(chip => {
+                            chip.setAttribute('data-active', 'false');
+                            chip.className = 'duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                        });
+                    }
+                    
+                    filterVideos();
+                });
+            });
+        }
+        
+        // Event Listeners
+        indexBtn.addEventListener('click', indexVideos);
+        emptyIndexBtn.addEventListener('click', indexVideos);
+        
+        clearBtn.addEventListener('click', function() {
+            if (confirm('Are you sure you want to clear all cached videos? This will delete your indexed data.')) {
+                localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
+                localStorage.removeItem(APP_CONFIG.INDEXED_DATE_KEY);
+                allVideos = [];
+                filteredVideos = [];
+                updateVideoCount();
+                updateLastUpdated(null);
+                renderVideos();
+                updateResultsCount();
+                emptyState.classList.remove('hidden');
+                
+                // Reset filters
+                searchInput.value = '';
+                resolutionFilter.value = 'all';
+                activeDurationFilter = null;
+                sortOptions.value = 'newest';
+                
+                durationChips.forEach(chip => {
+                    chip.setAttribute('data-active', 'false');
+                    chip.className = 'duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                });
+                
+                activeFilters.classList.add('hidden');
+            }
+        });
+        
+        searchInput.addEventListener('input', function() {
+            activeSearchTerm = this.value;
+            filterVideos();
+        });
+        
+        clearSearch.addEventListener('click', function() {
+            searchInput.value = '';
+            activeSearchTerm = '';
+            filterVideos();
+        });
+        
+        resolutionFilter.addEventListener('change', filterVideos);
+        
+        durationChips.forEach(chip => {
+            chip.addEventListener('click', function() {
+                const duration = this.getAttribute('data-duration');
+                
+                // Toggle active state
+                if (activeDurationFilter === duration) {
+                    // Deselect if already active
+                    activeDurationFilter = null;
+                    this.setAttribute('data-active', 'false');
+                    this.className = 'duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                } else {
+                    // Select new chip
+                    activeDurationFilter = duration;
+                    
+                    // Update all chips
+                    durationChips.forEach(c => {
+                        if (c === this) {
+                            c.setAttribute('data-active', 'true');
+                            c.className = 'duration-chip chip bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-xl text-sm transition';
+                        } else {
+                            c.setAttribute('data-active', 'false');
+                            c.className = 'duration-chip chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
+                        }
+                    });
+                }
+                
+                filterVideos();
+            });
+        });
+        
+        sortOptions.addEventListener('change', function() {
+            sortVideos();
+            renderVideos();
+        });
+        
+        hideError.addEventListener('click', function() {
+            errorPanel.classList.add('hidden');
+        });
+        
+        showDetails.addEventListener('click', function() {
+            const isHidden = errorDetails.classList.contains('hidden');
+            
+            if (isHidden) {
+                errorDetails.classList.remove('hidden');
+                detailsArrow.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>`;
+            } else {
+                errorDetails.classList.add('hidden');
+                detailsArrow.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>`;
+            }
+        });
+        
+        // Initialize the app
+        loadCachedData();
+        
+        // Initialize VK Bridge events
+        vkBridge.subscribe(e => {
+            if (e.detail.type === 'VKWebAppUpdateConfig') {
+                // Handle theme change if needed
+            }
+        });
+    </script>
+</body>
+</html>
