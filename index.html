@@ -1,1064 +1,459 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VK Liked Posts Manager</title>
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #1c1c1e;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #3a3a3c;
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #48484a;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .spinner {
-            animation: spin 1s linear infinite;
-        }
-        
-        .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        
-        .line-clamp-3 {
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        
-        .fade-text {
-            mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
-        }
-    </style>
-</head>
-<body class="bg-black text-white min-h-screen">
-    <script>
-        const APP_CONFIG = {
-            APP_ID: 53969951,
-            API_VERSION: '5.199',
-            MAX_POSTS: 50, // Increased since posts are smaller
-            BATCH_SIZE: 20,
-            STORAGE_KEY: 'vk_posts_data',
-            INDEXED_KEY: 'vk_last_indexed'
-        };
-        
-        let allPosts = [];
-        let filteredPosts = [];
-        let isIndexing = false;
-        let accessToken = null;
-        let userId = null;
-    </script>
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, Filter, TrendingUp, Clock, Video, RefreshCw, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
-    <div class="container mx-auto px-4 py-6 max-w-7xl">
-        <header class="mb-8">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 class="text-3xl font-bold text-white">VK Liked Posts</h1>
-                    <p class="text-gray-400 mt-2">Manage and filter your liked posts</p>
-                </div>
-                
-                <div class="bg-[#1c1c1e] rounded-xl p-4 min-w-[200px]">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <p class="text-gray-400 text-sm">Posts</p>
-                            <p id="post-count" class="text-2xl font-semibold">0</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-gray-400 text-sm">Last Updated</p>
-                            <p id="last-updated" class="text-sm">Never</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </header>
+const VKVideoIndexer = () => {
+  const [videos, setVideos] = useState([]);
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [resolutionFilter, setResolutionFilter] = useState('all');
+  const [durationFilter, setDurationFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
+  const [vkBridge, setVkBridge] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
 
-        <div class="bg-[#1c1c1e] rounded-2xl p-6 mb-8 shadow-xl">
-            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div class="flex items-center gap-4">
-                    <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-xl flex items-center gap-2 transition disabled:opacity-50">
-                        <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span id="index-text">Load Liked Posts</span>
-                    </button>
-                    
-                    <button id="clear-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition">
-                        Clear Data
-                    </button>
-                    
-                    <div id="progress-container" class="hidden flex-1">
-                        <div class="flex items-center gap-3">
-                            <div class="w-full bg-gray-800 rounded-full h-2.5">
-                                <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-                            </div>
-                            <span id="progress-text" class="text-sm text-gray-400">0%</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="flex-1 max-w-lg">
-                    <div class="relative">
-                        <input id="search-input" type="text" placeholder="Search posts..." class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600">
-                        <svg class="w-5 h-5 text-gray-500 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-                        </svg>
-                    </div>
-                </div>
+  // Initialize VK Bridge
+  useEffect(() => {
+    const initVK = async () => {
+      try {
+        // Check if VK Bridge is available
+        if (typeof window !== 'undefined' && window.vkBridge) {
+          const bridge = window.vkBridge;
+          setVkBridge(bridge);
+          await bridge.send('VKWebAppInit');
+        } else {
+          // Load VK Bridge dynamically
+          const script = document.createElement('script');
+          script.src = 'https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js';
+          script.onload = async () => {
+            const bridge = window.vkBridge;
+            setVkBridge(bridge);
+            await bridge.send('VKWebAppInit');
+          };
+          document.head.appendChild(script);
+        }
+      } catch (err) {
+        setError({ message: 'Failed to initialize VK Bridge', details: err.message });
+      }
+    };
+    initVK();
+  }, []);
+
+  // Load cached data on mount
+  useEffect(() => {
+    const cached = localStorage.getItem('vk_indexed_videos');
+    const timestamp = localStorage.getItem('vk_index_timestamp');
+    if (cached) {
+      try {
+        setVideos(JSON.parse(cached));
+        setLastUpdated(timestamp ? new Date(timestamp) : null);
+      } catch (err) {
+        console.error('Failed to parse cached data:', err);
+      }
+    }
+  }, []);
+
+  const getResolution = (width, height) => {
+    if (!width || !height) return 'Unknown';
+    if (height >= 2160) return '4K';
+    if (height >= 1440) return '1440p';
+    if (height >= 1080) return '1080p';
+    if (height >= 720) return '720p';
+    if (height >= 480) return '480p';
+    return '360p';
+  };
+
+  const requestToken = async () => {
+    try {
+      const result = await vkBridge.send('VKWebAppGetAuthToken', {
+        app_id: 53969951, // Replace with your VK App ID
+        scope: 'video,offline'
+      });
+      setAccessToken(result.access_token);
+      return result.access_token;
+    } catch (err) {
+      throw new Error(`Token request failed: ${err.error_type || err.message}`);
+    }
+  };
+
+  const fetchVideoBatch = async (token, offset) => {
+    try {
+      const result = await vkBridge.send('VKWebAppCallAPIMethod', {
+        method: 'fave.get',
+        params: {
+          item_type: 'video',
+          offset: offset,
+          count: 100,
+          access_token: token,
+          v: '5.131'
+        }
+      });
+      return result.response;
+    } catch (err) {
+      throw new Error(`API call failed: ${err.error_data?.error_msg || err.message}`);
+    }
+  };
+
+  const startIndexing = async () => {
+    setIsIndexing(true);
+    setError(null);
+    setProgress({ current: 0, total: 0 });
+
+    try {
+      if (!vkBridge) {
+        throw new Error('VK Bridge not initialized');
+      }
+
+      const token = accessToken || await requestToken();
+      
+      let allVideos = [];
+      let offset = 0;
+      const limit = 1000;
+      let hasMore = true;
+
+      while (hasMore && allVideos.length < limit) {
+        const batch = await fetchVideoBatch(token, offset);
+        
+        if (!batch || !batch.items || batch.items.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        const processedVideos = batch.items
+          .filter(item => item.video)
+          .map(item => {
+            const video = item.video;
+            return {
+              id: `${video.owner_id}_${video.id}`,
+              title: video.title || 'Untitled',
+              duration: video.duration || 0,
+              views: video.views || 0,
+              date: new Date(video.adding_date * 1000),
+              resolution: getResolution(video.width, video.height),
+              width: video.width,
+              height: video.height,
+              image: video.image?.[0]?.url || video.photo_320,
+              player: video.player
+            };
+          });
+
+        allVideos = [...allVideos, ...processedVideos];
+        offset += batch.items.length;
+        
+        setProgress({ 
+          current: allVideos.length, 
+          total: batch.count || allVideos.length 
+        });
+
+        if (batch.items.length < 100) {
+          hasMore = false;
+        }
+
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      setVideos(allVideos);
+      const now = new Date();
+      setLastUpdated(now);
+      
+      // Cache the results
+      localStorage.setItem('vk_indexed_videos', JSON.stringify(allVideos));
+      localStorage.setItem('vk_index_timestamp', now.toISOString());
+
+    } catch (err) {
+      setError({
+        message: 'Indexing failed',
+        details: err.message || 'Unknown error occurred'
+      });
+    } finally {
+      setIsIndexing(false);
+    }
+  };
+
+  const filteredAndSortedVideos = useMemo(() => {
+    let filtered = [...videos];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(v => 
+        v.title.toLowerCase().includes(query)
+      );
+    }
+
+    // Resolution filter
+    if (resolutionFilter !== 'all') {
+      filtered = filtered.filter(v => v.resolution === resolutionFilter);
+    }
+
+    // Duration filter
+    if (durationFilter !== 'all') {
+      filtered = filtered.filter(v => {
+        const mins = v.duration / 60;
+        if (durationFilter === 'short') return mins < 5;
+        if (durationFilter === 'medium') return mins >= 5 && mins <= 20;
+        if (durationFilter === 'long') return mins > 20;
+        return true;
+      });
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'newest': return b.date - a.date;
+        case 'oldest': return a.date - b.date;
+        case 'most_views': return b.views - a.views;
+        case 'least_views': return a.views - b.views;
+        case 'longest': return b.duration - a.duration;
+        case 'shortest': return a.duration - b.duration;
+        default: return 0;
+      }
+    });
+
+    return filtered;
+  }, [videos, searchQuery, resolutionFilter, durationFilter, sortBy]);
+
+  const formatDuration = (seconds) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatViews = (views) => {
+    if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
+    if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
+    return views.toString();
+  };
+
+  const resolutions = ['all', '4K', '1440p', '1080p', '720p', '480p', '360p'];
+
+  return (
+    <div className="min-h-screen bg-black text-white p-4">
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-6">
+        <h1 className="text-3xl font-bold mb-2">VK Video Indexer</h1>
+        <p className="text-gray-400">Index and organize your favorite VK videos</p>
+      </div>
+
+      {/* Controls */}
+      <div className="max-w-7xl mx-auto mb-6 space-y-4">
+        {/* Index Button and Stats */}
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            onClick={startIndexing}
+            disabled={isIndexing}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw className={`w-5 h-5 ${isIndexing ? 'animate-spin' : ''}`} />
+            {isIndexing ? 'Indexing...' : 'Index Content'}
+          </button>
+          
+          {videos.length > 0 && (
+            <div className="flex flex-wrap gap-4 text-sm text-gray-400">
+              <span className="flex items-center gap-1">
+                <Video className="w-4 h-4" />
+                {videos.length} videos indexed
+              </span>
+              {lastUpdated && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  Updated {lastUpdated.toLocaleDateString()} at {lastUpdated.toLocaleTimeString()}
+                </span>
+              )}
             </div>
-            
-            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-gray-400 text-sm mb-2">Post Type</label>
-                    <div class="relative">
-                        <select id="type-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600">
-                            <option value="all">All Types</option>
-                            <option value="text">Text Only</option>
-                            <option value="photo">With Photos</option>
-                            <option value="link">With Links</option>
-                            <option value="video">With Videos</option>
-                        </select>
-                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-                
-                <div>
-                    <label class="block text-gray-400 text-sm mb-2">Date Range</label>
-                    <div class="flex gap-2">
-                        <button data-date="week" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            This Week
-                        </button>
-                        <button data-date="month" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            This Month
-                        </button>
-                        <button data-date="year" class="date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition" data-active="false">
-                            This Year
-                        </button>
-                    </div>
-                </div>
-                
-                <div>
-                    <label class="block text-gray-400 text-sm mb-2">Sort By</label>
-                    <div class="relative">
-                        <select id="sort-options" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white appearance-none focus:outline-none focus:border-blue-600">
-                            <option value="newest">Newest First</option>
-                            <option value="oldest">Oldest First</option>
-                            <option value="most-liked">Most Liked</option>
-                            <option value="most-commented">Most Comments</option>
-                        </select>
-                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-400">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="flex items-end">
-                    <div class="bg-black rounded-xl p-4 w-full">
-                        <p class="text-gray-400 text-sm">Showing</p>
-                        <p id="results-count" class="text-xl font-semibold">0 posts</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="active-filters" class="mt-6 flex flex-wrap gap-2 hidden">
-                <div class="bg-blue-900/30 text-blue-400 py-1 px-3 rounded-full text-sm flex items-center gap-2">
-                    <span id="active-search-text"></span>
-                    <button id="clear-search" class="text-blue-300 hover:text-white">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
+          )}
         </div>
 
-        <div id="posts-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
-            <div id="empty-state" class="col-span-full text-center py-16">
-                <div class="bg-[#1c1c1e] rounded-2xl p-12 max-w-2xl mx-auto">
-                    <svg class="w-20 h-20 text-gray-700 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                    </svg>
-                    <h3 class="text-2xl font-bold text-white mb-3">No Posts Found</h3>
-                    <p class="text-gray-400 mb-8">Load your liked posts to get started</p>
-                    <button id="empty-index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl">
-                        Load Liked Posts
-                    </button>
-                </div>
+        {/* Search and Filters */}
+        {videos.length > 0 && (
+          <div className="bg-[#1c1c1e] rounded-lg p-4 space-y-4">
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search videos..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-black border border-gray-700 rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-blue-500 transition-colors"
+              />
             </div>
-        </div>
 
-        <div id="error-panel" class="bg-red-900/20 border border-red-800 rounded-2xl p-6 mb-8 hidden">
-            <div class="flex justify-between items-start">
-                <div>
-                    <h3 class="text-xl font-bold text-white mb-2">Error</h3>
-                    <p id="error-message" class="text-red-300"></p>
-                </div>
-                <button id="hide-error" class="text-red-400 hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
+            {/* Filters Row */}
+            <div className="flex flex-wrap gap-3">
+              {/* Resolution Filter */}
+              <select
+                value={resolutionFilter}
+                onChange={(e) => setResolutionFilter(e.target.value)}
+                className="bg-black border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                {resolutions.map(res => (
+                  <option key={res} value={res}>
+                    {res === 'all' ? 'All Resolutions' : res}
+                  </option>
+                ))}
+              </select>
+
+              {/* Duration Chips */}
+              <div className="flex gap-2">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'short', label: 'Short (<5m)' },
+                  { value: 'medium', label: 'Medium (5-20m)' },
+                  { value: 'long', label: 'Long (>20m)' }
+                ].map(chip => (
+                  <button
+                    key={chip.value}
+                    onClick={() => setDurationFilter(chip.value)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      durationFilter === chip.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-black border border-gray-700 text-gray-400 hover:border-gray-500'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sort Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-black border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="most_views">Most Views</option>
+                <option value="least_views">Least Views</option>
+                <option value="longest">Longest First</option>
+                <option value="shortest">Shortest First</option>
+              </select>
+            </div>
+
+            {/* Results Count */}
+            <div className="text-sm text-gray-400">
+              Showing {filteredAndSortedVideos.length} of {videos.length} videos
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Loading Overlay */}
+      {isIndexing && (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+          <div className="bg-[#1c1c1e] rounded-lg p-8 max-w-md w-full mx-4">
+            <div className="text-center">
+              <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">Indexing Videos</h3>
+              <p className="text-gray-400 mb-4">
+                Fetching your favorite videos from VK...
+              </p>
+              <div className="bg-black rounded-full h-2 overflow-hidden mb-2">
+                <div
+                  className="bg-blue-600 h-full transition-all duration-300"
+                  style={{
+                    width: progress.total > 0 
+                      ? `${(progress.current / progress.total) * 100}%`
+                      : '50%'
+                  }}
+                />
+              </div>
+              <p className="text-sm text-gray-500">
+                {progress.current} {progress.total > 0 && `/ ${progress.total}`} videos
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="max-w-7xl mx-auto mb-6">
+          <div className="bg-red-900 bg-opacity-20 border border-red-800 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-red-500 mb-1">{error.message}</h3>
+                <button
+                  onClick={() => setShowErrorDetails(!showErrorDetails)}
+                  className="text-sm text-gray-400 hover:text-gray-300 flex items-center gap-1"
+                >
+                  {showErrorDetails ? 'Hide' : 'Show'} details
+                  {showErrorDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
+                {showErrorDetails && (
+                  <pre className="mt-2 text-xs text-gray-400 bg-black rounded p-2 overflow-x-auto">
+                    {error.details}
+                  </pre>
+                )}
+              </div>
             </div>
-            <div class="mt-4">
-                <button id="show-details" class="text-red-400 hover:text-white text-sm font-medium flex items-center gap-2">
-                    <span>Details</span>
-                    <svg id="details-arrow" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                </button>
-                <div id="error-details" class="mt-3 p-4 bg-black/50 rounded-xl font-mono text-sm text-gray-300 hidden"></div>
-            </div>
+          </div>
         </div>
+      )}
 
-        <div id="loading-overlay" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 hidden">
-            <div class="bg-[#1c1c1e] rounded-2xl p-8 max-w-md w-full mx-4">
-                <div class="flex items-center justify-center mb-6">
-                    <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full spinner"></div>
+      {/* Video Grid */}
+      {filteredAndSortedVideos.length > 0 && (
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {filteredAndSortedVideos.map(video => (
+              <div
+                key={video.id}
+                className="bg-[#1c1c1e] rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
+                onClick={() => window.open(video.player, '_blank')}
+              >
+                <div className="relative aspect-video bg-black">
+                  {video.image && (
+                    <img
+                      src={video.image}
+                      alt={video.title}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  <div className="absolute bottom-2 right-2 bg-black bg-opacity-80 px-2 py-1 rounded text-xs font-semibold">
+                    {formatDuration(video.duration)}
+                  </div>
+                  <div className="absolute top-2 right-2 bg-blue-600 px-2 py-1 rounded text-xs font-semibold">
+                    {video.resolution}
+                  </div>
                 </div>
-                <h3 class="text-xl font-bold text-white text-center mb-2">Loading Posts</h3>
-                <p id="loading-message" class="text-gray-400 text-center mb-6">Please wait...</p>
-                
-                <div class="mb-4">
-                    <div class="flex justify-between text-sm text-gray-400 mb-1">
-                        <span>Progress</span>
-                        <span id="loading-progress">0%</span>
-                    </div>
-                    <div class="w-full bg-gray-800 rounded-full h-2.5">
-                        <div id="loading-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-                    </div>
+                <div className="p-3">
+                  <h3 className="font-semibold mb-2 line-clamp-2 text-sm">
+                    {video.title}
+                  </h3>
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" />
+                      {formatViews(video.views)}
+                    </span>
+                    <span>
+                      {video.date.toLocaleDateString()}
+                    </span>
+                  </div>
                 </div>
-                
-                <div class="text-center">
-                    <p id="loading-stats" class="text-gray-400 text-sm">Processing...</p>
-                </div>
-            </div>
+              </div>
+            ))}
+          </div>
         </div>
+      )}
+
+      {/* Empty State */}
+      {!isIndexing && videos.length === 0 && !error && (
+        <div className="max-w-7xl mx-auto text-center py-20">
+          <Video className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+          <h2 className="text-2xl font-semibold mb-2 text-gray-400">No Videos Indexed</h2>
+          <p className="text-gray-500 mb-6">Click "Index Content" to start fetching your favorite videos</p>
+        </div>
+      )}
     </div>
+  );
+};
 
-    <script>
-        // DOM Elements
-        const indexBtn = document.getElementById('index-btn');
-        const indexText = document.getElementById('index-text');
-        const indexSpinner = document.getElementById('index-spinner');
-        const clearBtn = document.getElementById('clear-btn');
-        const emptyIndexBtn = document.getElementById('empty-index-btn');
-        const searchInput = document.getElementById('search-input');
-        const typeFilter = document.getElementById('type-filter');
-        const dateChips = document.querySelectorAll('.date-chip');
-        const sortOptions = document.getElementById('sort-options');
-        const postsContainer = document.getElementById('posts-container');
-        const emptyState = document.getElementById('empty-state');
-        const postCount = document.getElementById('post-count');
-        const lastUpdated = document.getElementById('last-updated');
-        const resultsCount = document.getElementById('results-count');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const progressText = document.getElementById('progress-text');
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const loadingMessage = document.getElementById('loading-message');
-        const loadingProgress = document.getElementById('loading-progress');
-        const loadingBar = document.getElementById('loading-bar');
-        const loadingStats = document.getElementById('loading-stats');
-        const errorPanel = document.getElementById('error-panel');
-        const errorMessage = document.getElementById('error-message');
-        const errorDetails = document.getElementById('error-details');
-        const hideError = document.getElementById('hide-error');
-        const showDetails = document.getElementById('show-details');
-        const detailsArrow = document.getElementById('details-arrow');
-        const activeFilters = document.getElementById('active-filters');
-        const clearSearch = document.getElementById('clear-search');
-        const activeSearchText = document.getElementById('active-search-text');
-        
-        // State
-        let activeDateFilter = null;
-        let activeSearchTerm = '';
-        
-        // Initialize
-        async function initialize() {
-            try {
-                console.log('Initializing VK Bridge...');
-                await vkBridge.send('VKWebAppInit', {});
-                console.log('VK Bridge initialized');
-                
-                // Get launch params
-                const params = new URLSearchParams(window.location.search);
-                userId = params.get('vk_user_id');
-                console.log('User ID:', userId);
-                
-                loadCachedData();
-                
-            } catch (error) {
-                console.error('Init error:', error);
-                showError('Failed to initialize. Please open in VK app.', error);
-            }
-        }
-        
-        function loadCachedData() {
-            const cachedData = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
-            const lastIndexed = localStorage.getItem(APP_CONFIG.INDEXED_KEY);
-            
-            if (cachedData) {
-                try {
-                    allPosts = JSON.parse(cachedData);
-                    filteredPosts = [...allPosts];
-                    updatePostCount();
-                    updateLastUpdated(lastIndexed);
-                    renderPosts();
-                    updateResultsCount();
-                    
-                    if (allPosts.length > 0) {
-                        emptyState.classList.add('hidden');
-                    }
-                } catch (e) {
-                    console.error('Parse error:', e);
-                }
-            }
-        }
-        
-        function updatePostCount() {
-            postCount.textContent = allPosts.length.toLocaleString();
-        }
-        
-        function updateLastUpdated(timestamp) {
-            if (timestamp) {
-                const date = new Date(parseInt(timestamp));
-                lastUpdated.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            } else {
-                lastUpdated.textContent = 'Never';
-            }
-        }
-        
-        function updateResultsCount() {
-            const count = filteredPosts.length;
-            resultsCount.textContent = `${count} ${count === 1 ? 'post' : 'posts'}`;
-        }
-        
-        function formatDate(timestamp) {
-            const date = new Date(timestamp * 1000);
-            const now = new Date();
-            const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-            
-            if (diffDays === 0) {
-                const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
-                if (diffHours === 0) {
-                    const diffMinutes = Math.floor((now - date) / (1000 * 60));
-                    return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
-                }
-                return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
-            }
-            
-            if (diffDays === 1) return 'Yesterday';
-            if (diffDays < 7) return `${diffDays} days ago`;
-            if (diffDays < 30) {
-                const weeks = Math.floor(diffDays / 7);
-                return `${weeks} week${weeks !== 1 ? 's' : ''} ago`;
-            }
-            return date.toLocaleDateString();
-        }
-        
-        function formatNumber(num) {
-            if (!num) return '0';
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-            return num.toString();
-        }
-        
-        function stripHtml(html) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            return tmp.textContent || tmp.innerText || '';
-        }
-        
-        // Get liked posts using fave.getPosts API
-        async function getLikedPosts() {
-            console.log('Getting access token...');
-            
-            // Get access token with wall/favorites permission
-            loadingMessage.textContent = 'Requesting permissions...';
-            const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
-                app_id: APP_CONFIG.APP_ID,
-                scope: 'wall,favorites'  // Try wall permission for posts
-            });
-            
-            if (!tokenResponse || !tokenResponse.access_token) {
-                throw new Error('Failed to get access token. Please grant wall/favorites permission.');
-            }
-            
-            accessToken = tokenResponse.access_token;
-            console.log('Got access token');
-            
-            loadingMessage.textContent = 'Fetching your liked posts...';
-            
-            const posts = [];
-            let offset = 0;
-            let hasMore = true;
-            
-            while (hasMore && posts.length < APP_CONFIG.MAX_POSTS) {
-                try {
-                    console.log(`Fetching posts batch at offset ${offset}`);
-                    
-                    // Try to get liked posts using newsfeed.get with filters
-                    const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                        method: 'newsfeed.get',
-                        params: {
-                            filters: 'post',  // Get only posts
-                            count: APP_CONFIG.BATCH_SIZE,
-                            offset: offset,
-                            extended: 1,
-                            access_token: accessToken,
-                            v: APP_CONFIG.API_VERSION
-                        }
-                    });
-                    
-                    console.log('API Response:', response);
-                    
-                    if (response.error) {
-                        console.error('API Error:', response.error);
-                        
-                        // Alternative: Try fave.getPosts if available
-                        if (response.error.error_code === 15) {
-                            // Try alternative method - get user's wall and check likes
-                            return getPostsFromWall();
-                        }
-                        
-                        throw new Error(`API Error: ${response.error.error_msg}`);
-                    }
-                    
-                    if (response.response && response.response.items) {
-                        const items = response.response.items;
-                        
-                        if (items.length === 0) {
-                            hasMore = false;
-                            break;
-                        }
-                        
-                        // Process posts that are liked by current user
-                        for (const item of items) {
-                            if (item.likes && item.likes.user_likes === 1) {
-                                const postData = {
-                                    id: item.id,
-                                    owner_id: item.owner_id,
-                                    from_id: item.from_id,
-                                    date: item.date,
-                                    text: item.text || '',
-                                    likes: item.likes.count || 0,
-                                    comments: item.comments ? item.comments.count : 0,
-                                    reposts: item.reposts ? item.reposts.count : 0,
-                                    views: item.views ? item.views.count : 0,
-                                    post_type: item.post_type || 'post',
-                                    attachments: item.attachments || [],
-                                    copy_history: item.copy_history || []
-                                };
-                                
-                                // Determine post type
-                                postData.content_type = determinePostType(postData);
-                                postData.has_media = postData.attachments.length > 0;
-                                
-                                posts.push(postData);
-                            }
-                        }
-                        
-                        offset += items.length;
-                        
-                        // Update progress
-                        const progress = Math.min(100, Math.round((posts.length / APP_CONFIG.MAX_POSTS) * 100));
-                        updateLoadingProgress(progress, posts.length);
-                        
-                        if (items.length < APP_CONFIG.BATCH_SIZE) {
-                            hasMore = false;
-                        }
-                    } else {
-                        hasMore = false;
-                    }
-                    
-                } catch (error) {
-                    console.error('Batch error:', error);
-                    throw error;
-                }
-            }
-            
-            return posts;
-        }
-        
-        // Alternative method: Get posts from user's wall
-        async function getPostsFromWall() {
-            console.log('Trying to get posts from wall...');
-            
-            const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                method: 'wall.get',
-                params: {
-                    owner_id: userId,
-                    count: APP_CONFIG.MAX_POSTS,
-                    extended: 1,
-                    access_token: accessToken,
-                    v: APP_CONFIG.API_VERSION
-                }
-            });
-            
-            if (response.error) {
-                throw new Error(`Wall API Error: ${response.error.error_msg}`);
-            }
-            
-            const posts = [];
-            
-            if (response.response && response.response.items) {
-                for (const item of response.response.items) {
-                    const postData = {
-                        id: item.id,
-                        owner_id: item.owner_id,
-                        from_id: item.from_id,
-                        date: item.date,
-                        text: item.text || '',
-                        likes: item.likes ? item.likes.count : 0,
-                        comments: item.comments ? item.comments.count : 0,
-                        reposts: item.reposts ? item.reposts.count : 0,
-                        post_type: item.post_type || 'post',
-                        attachments: item.attachments || [],
-                        is_liked: item.likes ? item.likes.user_likes : 0
-                    };
-                    
-                    // Only include liked posts
-                    if (postData.is_liked) {
-                        postData.content_type = determinePostType(postData);
-                        postData.has_media = postData.attachments.length > 0;
-                        posts.push(postData);
-                    }
-                }
-            }
-            
-            return posts;
-        }
-        
-        function determinePostType(post) {
-            if (!post.attachments || post.attachments.length === 0) {
-                return 'text';
-            }
-            
-            const attachmentTypes = post.attachments.map(a => a.type);
-            
-            if (attachmentTypes.includes('photo')) return 'photo';
-            if (attachmentTypes.includes('video')) return 'video';
-            if (attachmentTypes.includes('link')) return 'link';
-            if (attachmentTypes.includes('audio')) return 'audio';
-            if (attachmentTypes.includes('doc')) return 'doc';
-            
-            return 'text';
-        }
-        
-        async function indexPosts() {
-            if (isIndexing) return;
-            
-            isIndexing = true;
-            
-            loadingOverlay.classList.remove('hidden');
-            updateLoadingProgress(0, 0);
-            loadingMessage.textContent = 'Starting...';
-            
-            indexBtn.disabled = true;
-            indexText.textContent = 'Loading...';
-            indexSpinner.classList.remove('hidden');
-            
-            errorPanel.classList.add('hidden');
-            
-            try {
-                console.log('Starting to fetch liked posts...');
-                
-                const fetchedPosts = await getLikedPosts();
-                
-                console.log(`Successfully fetched ${fetchedPosts.length} liked posts`);
-                
-                if (fetchedPosts.length > 0) {
-                    allPosts = fetchedPosts;
-                    filteredPosts = [...allPosts];
-                    
-                    localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allPosts));
-                    localStorage.setItem(APP_CONFIG.INDEXED_KEY, Date.now().toString());
-                    
-                    updatePostCount();
-                    updateLastUpdated(Date.now().toString());
-                    renderPosts();
-                    updateResultsCount();
-                    
-                    emptyState.classList.add('hidden');
-                    
-                    loadingMessage.textContent = `Loaded ${fetchedPosts.length} liked posts!`;
-                    loadingStats.textContent = 'Success!';
-                    
-                    // Update progress to 100%
-                    updateLoadingProgress(100, fetchedPosts.length);
-                } else {
-                    loadingMessage.textContent = 'No liked posts found';
-                    loadingStats.textContent = 'Try liking some posts first';
-                    
-                    // Load demo data for testing
-                    loadDemoData();
-                }
-                
-                setTimeout(() => {
-                    loadingOverlay.classList.add('hidden');
-                }, 1500);
-                
-            } catch (error) {
-                console.error('Failed to fetch liked posts:', error);
-                showError('Failed to load liked posts', error);
-                loadingOverlay.classList.add('hidden');
-                
-                // Load demo data if real data fails
-                if (allPosts.length === 0) {
-                    loadDemoData();
-                }
-            } finally {
-                isIndexing = false;
-                indexBtn.disabled = false;
-                indexText.textContent = 'Load Liked Posts';
-                indexSpinner.classList.add('hidden');
-                progressContainer.classList.add('hidden');
-            }
-        }
-        
-        // Demo data for testing
-        function loadDemoData() {
-            console.log('Loading demo data for testing...');
-            
-            const demoPosts = [
-                {
-                    id: 1,
-                    owner_id: -123456,
-                    from_id: 123456,
-                    date: Math.floor(Date.now() / 1000) - 3600,
-                    text: 'Just watched an amazing documentary about space exploration. The visuals were breathtaking!',
-                    likes: 245,
-                    comments: 42,
-                    reposts: 15,
-                    content_type: 'text',
-                    has_media: false
-                },
-                {
-                    id: 2,
-                    owner_id: -789012,
-                    from_id: 789012,
-                    date: Math.floor(Date.now() / 1000) - 7200,
-                    text: 'Check out this beautiful sunset from my hike yesterday! Nature never ceases to amaze me.',
-                    likes: 512,
-                    comments: 67,
-                    reposts: 31,
-                    content_type: 'photo',
-                    has_media: true
-                },
-                {
-                    id: 3,
-                    owner_id: -345678,
-                    from_id: 345678,
-                    date: Math.floor(Date.now() / 1000) - 86400,
-                    text: 'Found this interesting article about AI advancements. Definitely worth a read! https://example.com/ai-article',
-                    likes: 189,
-                    comments: 23,
-                    reposts: 9,
-                    content_type: 'link',
-                    has_media: false
-                },
-                {
-                    id: 4,
-                    owner_id: -901234,
-                    from_id: 901234,
-                    date: Math.floor(Date.now() / 1000) - 172800,
-                    text: 'Music recommendation: New album just dropped and it\'s fantastic! Perfect for coding sessions.',
-                    likes: 321,
-                    comments: 45,
-                    reposts: 18,
-                    content_type: 'audio',
-                    has_media: false
-                },
-                {
-                    id: 5,
-                    owner_id: -567890,
-                    from_id: 567890,
-                    date: Math.floor(Date.now() / 1000) - 259200,
-                    text: 'Tutorial: How to build a VK Mini App from scratch. Step by step guide for beginners.',
-                    likes: 432,
-                    comments: 89,
-                    reposts: 27,
-                    content_type: 'text',
-                    has_media: false
-                },
-                {
-                    id: 6,
-                    owner_id: -112233,
-                    from_id: 112233,
-                    date: Math.floor(Date.now() / 1000) - 345600,
-                    text: 'Funny cat video that made my day! 🐱',
-                    likes: 876,
-                    comments: 123,
-                    reposts: 54,
-                    content_type: 'video',
-                    has_media: true
-                }
-            ];
-            
-            allPosts = demoPosts;
-            filteredPosts = [...allPosts];
-            
-            localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allPosts));
-            localStorage.setItem(APP_CONFIG.INDEXED_KEY, Date.now().toString());
-            
-            updatePostCount();
-            updateLastUpdated(Date.now().toString());
-            renderPosts();
-            updateResultsCount();
-            
-            emptyState.classList.add('hidden');
-            
-            showError('Using demo data. Enable "wall" permission for real data.', 
-                     new Error('The app needs "wall" permission to access your liked posts.'));
-        }
-        
-        function updateLoadingProgress(percent, count) {
-            loadingProgress.textContent = `${percent}%`;
-            loadingBar.style.width = `${percent}%`;
-            loadingStats.textContent = `Found ${count} posts`;
-            
-            if (count > 0) {
-                progressContainer.classList.remove('hidden');
-                progressBar.style.width = `${percent}%`;
-                progressText.textContent = `${count} posts`;
-            }
-        }
-        
-        function showError(message, error) {
-            errorMessage.textContent = message;
-            
-            if (error) {
-                errorDetails.textContent = JSON.stringify({
-                    message: error.message,
-                    timestamp: new Date().toISOString(),
-                    userId: userId,
-                    suggestion: 'Make sure "wall" and "favorites" permissions are enabled'
-                }, null, 2);
-            }
-            
-            errorPanel.classList.remove('hidden');
-            progressContainer.classList.add('hidden');
-        }
-        
-        function getPostTypeColor(type) {
-            switch(type) {
-                case 'photo': return 'bg-green-600';
-                case 'video': return 'bg-purple-600';
-                case 'link': return 'bg-yellow-600';
-                case 'audio': return 'bg-pink-600';
-                case 'doc': return 'bg-orange-600';
-                default: return 'bg-blue-600';
-            }
-        }
-        
-        function getPostTypeIcon(type) {
-            switch(type) {
-                case 'photo': return '📷';
-                case 'video': return '🎥';
-                case 'link': return '🔗';
-                case 'audio': return '🎵';
-                case 'doc': return '📄';
-                default: return '📝';
-            }
-        }
-        
-        function renderPosts() {
-            postsContainer.innerHTML = '';
-            
-            if (filteredPosts.length === 0) {
-                emptyState.classList.remove('hidden');
-                return;
-            }
-            
-            emptyState.classList.add('hidden');
-            
-            filteredPosts.forEach(post => {
-                const card = document.createElement('div');
-                card.className = 'bg-[#1c1c1e] rounded-2xl overflow-hidden hover:scale-[1.02] transition-transform';
-                
-                const postTypeColor = getPostTypeColor(post.content_type);
-                const postTypeIcon = getPostTypeIcon(post.content_type);
-                
-                // Truncate text for display
-                const displayText = post.text.length > 200 ? 
-                    post.text.substring(0, 200) + '...' : post.text;
-                
-                card.innerHTML = `
-                    <div class="p-6">
-                        <div class="flex items-start justify-between mb-4">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center">
-                                    <span class="text-lg">${postTypeIcon}</span>
-                                </div>
-                                <div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="text-white font-medium">Post #${post.id}</span>
-                                        <span class="text-xs px-2 py-1 rounded-full ${postTypeColor}">
-                                            ${post.content_type.toUpperCase()}
-                                        </span>
-                                    </div>
-                                    <p class="text-gray-400 text-sm">${formatDate(post.date)}</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <div class="text-gray-300 line-clamp-3 fade-text">
-                                ${displayText.replace(/\n/g, '<br>')}
-                            </div>
-                            ${post.text.length > 200 ? '<p class="text-blue-400 text-sm mt-2">Read more</p>' : ''}
-                        </div>
-                        
-                        ${post.has_media ? `
-                            <div class="mb-4 p-3 bg-black/50 rounded-lg">
-                                <div class="flex items-center gap-2 text-gray-400">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                                    </svg>
-                                    <span class="text-sm">Contains media</span>
-                                </div>
-                            </div>
-                        ` : ''}
-                        
-                        <div class="flex items-center justify-between pt-4 border-t border-gray-800">
-                            <div class="flex items-center gap-4">
-                                <div class="flex items-center gap-1">
-                                    <svg class="w-5 h-5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
-                                    </svg>
-                                    <span class="text-gray-300">${formatNumber(post.likes)}</span>
-                                </div>
-                                <div class="flex items-center gap-1">
-                                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
-                                    </svg>
-                                    <span class="text-gray-300">${formatNumber(post.comments)}</span>
-                                </div>
-                                <div class="flex items-center gap-1">
-                                    <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path>
-                                    </svg>
-                                    <span class="text-gray-300">${formatNumber(post.reposts)}</span>
-                                </div>
-                            </div>
-                            <button class="text-blue-400 hover:text-blue-300 text-sm font-medium">
-                                View Post
-                            </button>
-                        </div>
-                    </div>
-                `;
-                
-                postsContainer.appendChild(card);
-            });
-            
-            updateResultsCount();
-        }
-        
-        function filterPosts() {
-            if (allPosts.length === 0) {
-                filteredPosts = [];
-                renderPosts();
-                return;
-            }
-            
-            const now = Math.floor(Date.now() / 1000);
-            
-            filteredPosts = allPosts.filter(post => {
-                // Search filter
-                if (activeSearchTerm && activeSearchTerm.trim() !== '') {
-                    const searchTerm = activeSearchTerm.toLowerCase();
-                    if (!post.text.toLowerCase().includes(searchTerm)) {
-                        return false;
-                    }
-                }
-                
-                // Type filter
-                const selectedType = typeFilter.value;
-                if (selectedType !== 'all') {
-                    if (selectedType === 'text' && post.content_type !== 'text') return false;
-                    if (selectedType === 'photo' && post.content_type !== 'photo') return false;
-                    if (selectedType === 'video' && post.content_type !== 'video') return false;
-                    if (selectedType === 'link' && post.content_type !== 'link') return false;
-                }
-                
-                // Date filter
-                if (activeDateFilter) {
-                    const postDate = post.date;
-                    const daysDiff = (now - postDate) / (60 * 60 * 24);
-                    
-                    switch(activeDateFilter) {
-                        case 'week':
-                            if (daysDiff > 7) return false;
-                            break;
-                        case 'month':
-                            if (daysDiff > 30) return false;
-                            break;
-                        case 'year':
-                            if (daysDiff > 365) return false;
-                            break;
-                    }
-                }
-                
-                return true;
-            });
-            
-            sortPosts();
-            renderPosts();
-            updateActiveFiltersDisplay();
-        }
-        
-        function sortPosts() {
-            const sortBy = sortOptions.value;
-            
-            filteredPosts.sort((a, b) => {
-                switch(sortBy) {
-                    case 'newest':
-                        return b.date - a.date;
-                    case 'oldest':
-                        return a.date - b.date;
-                    case 'most-liked':
-                        return b.likes - a.likes;
-                    case 'most-commented':
-                        return b.comments - a.comments;
-                    default:
-                        return 0;
-                }
-            });
-        }
-        
-        function updateActiveFiltersDisplay() {
-            if (activeSearchTerm && activeSearchTerm.trim() !== '') {
-                activeSearchText.textContent = `Search: "${activeSearchTerm}"`;
-                activeFilters.classList.remove('hidden');
-            } else {
-                activeFilters.classList.add('hidden');
-            }
-        }
-        
-        // Event Listeners
-        indexBtn.addEventListener('click', indexPosts);
-        emptyIndexBtn.addEventListener('click', indexPosts);
-        
-        clearBtn.addEventListener('click', function() {
-            if (confirm('Clear all cached data?')) {
-                localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
-                localStorage.removeItem(APP_CONFIG.INDEXED_KEY);
-                allPosts = [];
-                filteredPosts = [];
-                updatePostCount();
-                updateLastUpdated(null);
-                renderPosts();
-                updateResultsCount();
-                emptyState.classList.remove('hidden');
-                
-                searchInput.value = '';
-                typeFilter.value = 'all';
-                activeDateFilter = null;
-                sortOptions.value = 'newest';
-                
-                dateChips.forEach(chip => {
-                    chip.setAttribute('data-active', 'false');
-                    chip.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                });
-                
-                activeFilters.classList.add('hidden');
-            }
-        });
-        
-        searchInput.addEventListener('input', function() {
-            activeSearchTerm = this.value;
-            filterPosts();
-        });
-        
-        clearSearch.addEventListener('click', function() {
-            searchInput.value = '';
-            activeSearchTerm = '';
-            filterPosts();
-        });
-        
-        typeFilter.addEventListener('change', filterPosts);
-        
-        dateChips.forEach(chip => {
-            chip.addEventListener('click', function() {
-                const dateRange = this.getAttribute('data-date');
-                
-                if (activeDateFilter === dateRange) {
-                    activeDateFilter = null;
-                    this.setAttribute('data-active', 'false');
-                    this.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                } else {
-                    activeDateFilter = dateRange;
-                    
-                    dateChips.forEach(c => {
-                        if (c === this) {
-                            c.setAttribute('data-active', 'true');
-                            c.className = 'date-chip bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-xl text-sm transition';
-                        } else {
-                            c.setAttribute('data-active', 'false');
-                            c.className = 'date-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                        }
-                    });
-                }
-                
-                filterPosts();
-            });
-        });
-        
-        sortOptions.addEventListener('change', function() {
-            sortPosts();
-            renderPosts();
-        });
-        
-        hideError.addEventListener('click', function() {
-            errorPanel.classList.add('hidden');
-        });
-        
-        showDetails.addEventListener('click', function() {
-            const isHidden = errorDetails.classList.contains('hidden');
-            if (isHidden) {
-                errorDetails.classList.remove('hidden');
-                detailsArrow.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>`;
-            } else {
-                errorDetails.classList.add('hidden');
-                detailsArrow.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>`;
-            }
-        });
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', initialize);
-    </script>
-</body>
-</html>
+export default VKVideoIndexer;
