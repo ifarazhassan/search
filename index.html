@@ -23,20 +23,40 @@ const VKVideoIndexer = () => {
         if (typeof window !== 'undefined' && window.vkBridge) {
           const bridge = window.vkBridge;
           setVkBridge(bridge);
-          await bridge.send('VKWebAppInit');
+          try {
+            await bridge.send('VKWebAppInit');
+            console.log('VK Bridge initialized successfully');
+          } catch (initErr) {
+            console.warn('VK Bridge init warning:', initErr);
+            // Some environments don't need explicit init
+          }
         } else {
           // Load VK Bridge dynamically
           const script = document.createElement('script');
           script.src = 'https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js';
+          script.onerror = () => {
+            setError({ 
+              message: 'Failed to load VK Bridge script', 
+              details: 'Could not load VK Bridge from CDN. Check your internet connection.' 
+            });
+          };
           script.onload = async () => {
             const bridge = window.vkBridge;
             setVkBridge(bridge);
-            await bridge.send('VKWebAppInit');
+            try {
+              await bridge.send('VKWebAppInit');
+              console.log('VK Bridge initialized successfully');
+            } catch (initErr) {
+              console.warn('VK Bridge init warning:', initErr);
+            }
           };
           document.head.appendChild(script);
         }
       } catch (err) {
-        setError({ message: 'Failed to initialize VK Bridge', details: err.message });
+        setError({ 
+          message: 'Failed to initialize VK Bridge', 
+          details: `${err.message || err}\n\nThis app must be opened inside VK or VK Mini Apps environment.` 
+        });
       }
     };
     initVK();
@@ -68,19 +88,28 @@ const VKVideoIndexer = () => {
 
   const requestToken = async () => {
     try {
+      if (!vkBridge) {
+        throw new Error('VK Bridge not initialized. Make sure you are running this inside VK.');
+      }
+      
+      console.log('Requesting access token...');
       const result = await vkBridge.send('VKWebAppGetAuthToken', {
         app_id: 53969951, // Replace with your VK App ID
         scope: 'video,offline'
       });
+      
+      console.log('Token received successfully');
       setAccessToken(result.access_token);
       return result.access_token;
     } catch (err) {
-      throw new Error(`Token request failed: ${err.error_type || err.message}`);
+      console.error('Token request error:', err);
+      throw new Error(`Token request failed: ${err.error_type || err.error_reason || err.message || JSON.stringify(err)}\n\nMake sure:\n1. You've created a VK App and replaced app_id\n2. The app has video permissions\n3. You're testing inside VK environment`);
     }
   };
 
   const fetchVideoBatch = async (token, offset) => {
     try {
+      console.log(`Fetching batch at offset ${offset}...`);
       const result = await vkBridge.send('VKWebAppCallAPIMethod', {
         method: 'fave.get',
         params: {
@@ -91,9 +120,11 @@ const VKVideoIndexer = () => {
           v: '5.131'
         }
       });
+      console.log(`Batch fetched: ${result.response?.items?.length || 0} items`);
       return result.response;
     } catch (err) {
-      throw new Error(`API call failed: ${err.error_data?.error_msg || err.message}`);
+      console.error('API call error:', err);
+      throw new Error(`API call failed at offset ${offset}: ${err.error_data?.error_msg || err.error_data?.error_code || err.message || JSON.stringify(err)}`);
     }
   };
 
@@ -104,20 +135,26 @@ const VKVideoIndexer = () => {
 
     try {
       if (!vkBridge) {
-        throw new Error('VK Bridge not initialized');
+        throw new Error('VK Bridge not initialized. This app must run inside VK environment (vk.com or VK Mini Apps).');
       }
 
+      console.log('Starting indexing...');
       const token = accessToken || await requestToken();
+      
+      if (!token) {
+        throw new Error('Failed to obtain access token');
+      }
       
       let allVideos = [];
       let offset = 0;
-      const LIMIT = 10;
+      const LIMIT = 1000;
       let hasMore = true;
 
       while (hasMore && allVideos.length < LIMIT) {
         const batch = await fetchVideoBatch(token, offset);
         
         if (!batch || !batch.items || batch.items.length === 0) {
+          console.log('No more items to fetch');
           hasMore = false;
           break;
         }
@@ -148,6 +185,7 @@ const VKVideoIndexer = () => {
         
         // Stop if we've hit the limit
         if (allVideos.length >= LIMIT) {
+          console.log('Reached limit of', LIMIT, 'videos');
           hasMore = false;
           break;
         }
@@ -165,18 +203,25 @@ const VKVideoIndexer = () => {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      console.log('Indexing complete:', allVideos.length, 'videos');
       setVideos(allVideos);
       const now = new Date();
       setLastUpdated(now);
       
       // Cache the results
-      localStorage.setItem('vk_indexed_videos', JSON.stringify(allVideos));
-      localStorage.setItem('vk_index_timestamp', now.toISOString());
+      try {
+        localStorage.setItem('vk_indexed_videos', JSON.stringify(allVideos));
+        localStorage.setItem('vk_index_timestamp', now.toISOString());
+        console.log('Data cached successfully');
+      } catch (cacheErr) {
+        console.warn('Failed to cache data:', cacheErr);
+      }
 
     } catch (err) {
+      console.error('Indexing error:', err);
       setError({
         message: 'Indexing failed',
-        details: err.message || 'Unknown error occurred'
+        details: err.message || err.toString() || 'Unknown error occurred'
       });
     } finally {
       setIsIndexing(false);
