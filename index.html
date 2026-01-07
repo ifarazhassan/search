@@ -409,11 +409,12 @@
                     // Use fave.get to get liked videos
                     const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                         method: 'fave.get',
+                        request_id: `${Date.now()}_${offset}`,
                         params: {
                             item_type: 'video',
-                            offset: offset,
-                            count: APP_CONFIG.BATCH_SIZE,
-                            extended: 1,
+                            offset: offset.toString(),
+                            count: APP_CONFIG.BATCH_SIZE.toString(),
+                            extended: '1',
                             access_token: accessToken,
                             v: APP_CONFIG.API_VERSION
                         }
@@ -554,10 +555,16 @@
                     error_type: error.error_type,
                     error_reason: error.error_reason,
                     error_code: error.error_code,
+                    error_data: error.error_data,
+                    request_params: error.request_params,
                     timestamp: new Date().toISOString(),
                     userId: userId,
                     hasToken: !!accessToken
                 };
+                
+                // Log full error for debugging
+                console.error('Full error object:', error);
+                
                 errorDetails.textContent = JSON.stringify(errorInfo, null, 2);
             }
             
