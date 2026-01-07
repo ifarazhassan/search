@@ -71,13 +71,12 @@
     <script>
         // App Configuration
         const APP_CONFIG = {
-            APP_ID: 53969951, // Replace with your actual VK Mini App ID
+            APP_ID: 53969951, // Your actual VK Mini App ID from the URL
             API_VERSION: '5.199',
             MAX_VIDEOS_TO_FETCH: 1000,
             BATCH_SIZE: 50,
             STORAGE_KEY: 'vk_liked_videos_data',
-            INDEXED_DATE_KEY: 'vk_videos_last_indexed',
-            ACCESS_TOKEN_KEY: 'vk_access_token'
+            INDEXED_DATE_KEY: 'vk_videos_last_indexed'
         };
         
         // Global state
@@ -88,6 +87,7 @@
         let totalVideosFetched = 0;
         let indexingError = null;
         let accessToken = null;
+        let launchParams = {};
     </script>
 
     <!-- Main App Container -->
@@ -344,26 +344,69 @@
         let activeDurationFilter = null;
         let activeSearchTerm = '';
         
-        // Get access token from VK
+        // Parse launch parameters from URL
+        function parseLaunchParams() {
+            const params = new URLSearchParams(window.location.search);
+            launchParams = {};
+            
+            for (const [key, value] of params.entries()) {
+                launchParams[key] = value;
+            }
+            
+            console.log('Launch params:', launchParams);
+            
+            // Get access token from launch params
+            if (params.get('vk_access_token_settings')) {
+                console.log('Token settings:', params.get('vk_access_token_settings'));
+            }
+            
+            return launchParams;
+        }
+        
+        // Get access token using VK Bridge
         async function getAccessToken() {
             try {
-                console.log('Requesting access token...');
-                const response = await vkBridge.send('VKWebAppGetAuthToken', {
+                console.log('Getting launch params...');
+                
+                // First, get launch params which contain access token
+                const launchParamsResponse = await vkBridge.send('VKWebAppGetLaunchParams');
+                console.log('Launch params response:', launchParamsResponse);
+                
+                // Try to get token directly if it's in launch params
+                if (launchParamsResponse.access_token) {
+                    accessToken = launchParamsResponse.access_token;
+                    console.log('Got access token from launch params');
+                    return accessToken;
+                }
+                
+                // If not in launch params, try to get it via auth token request
+                console.log('Trying to get auth token...');
+                const authResponse = await vkBridge.send('VKWebAppGetAuthToken', {
                     app_id: APP_CONFIG.APP_ID,
-                    scope: 'favorites,video,offline'
+                    scope: 'favorites'  // Only request favorites scope
                 });
                 
-                if (response && response.access_token) {
-                    accessToken = response.access_token;
-                    localStorage.setItem(APP_CONFIG.ACCESS_TOKEN_KEY, accessToken);
-                    console.log('Access token received');
+                if (authResponse && authResponse.access_token) {
+                    accessToken = authResponse.access_token;
+                    console.log('Got access token via VKWebAppGetAuthToken');
                     return accessToken;
-                } else {
-                    throw new Error('No access token in response');
                 }
+                
+                throw new Error('Could not get access token');
             } catch (error) {
                 console.error('Error getting access token:', error);
-                throw error;
+                
+                // Last resort: try to extract from URL
+                const urlParams = new URLSearchParams(window.location.hash.substring(1));
+                const token = urlParams.get('access_token');
+                
+                if (token) {
+                    accessToken = token;
+                    console.log('Got access token from URL hash');
+                    return accessToken;
+                }
+                
+                throw new Error('Failed to get access token. Please make sure the app has permission to access your favorites.');
             }
         }
         
@@ -371,12 +414,6 @@
         function loadCachedData() {
             const cachedData = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
             const lastIndexed = localStorage.getItem(APP_CONFIG.INDEXED_DATE_KEY);
-            
-            // Try to load cached access token
-            const cachedToken = localStorage.getItem(APP_CONFIG.ACCESS_TOKEN_KEY);
-            if (cachedToken) {
-                accessToken = cachedToken;
-            }
             
             if (cachedData) {
                 try {
@@ -488,6 +525,8 @@
                 accessToken = await getAccessToken();
             }
             
+            console.log(`Calling API: ${method}`, params);
+            
             const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                 method: method,
                 params: {
@@ -496,6 +535,8 @@
                     v: APP_CONFIG.API_VERSION
                 }
             });
+            
+            console.log(`API response for ${method}:`, response);
             
             if (response.error) {
                 throw new Error(`API Error: ${response.error.error_msg} (${response.error.error_code})`);
@@ -529,8 +570,10 @@
                 // First, get access token
                 try {
                     accessToken = await getAccessToken();
+                    console.log('Access token obtained:', accessToken ? 'Yes' : 'No');
                 } catch (tokenError) {
-                    throw new Error('Failed to get access token. Please make sure you are logged into VK.');
+                    console.error('Token error:', tokenError);
+                    throw new Error('Failed to get access token. Please make sure the app has permission to access your favorites.');
                 }
                 
                 // Initialize an empty array for videos
@@ -538,47 +581,56 @@
                 
                 // Start fetching loop
                 let hasMoreVideos = true;
+                let retryCount = 0;
+                const maxRetries = 3;
                 
-                while (hasMoreVideos && totalVideosFetched < APP_CONFIG.MAX_VIDEOS_TO_FETCH) {
+                while (hasMoreVideos && totalVideosFetched < APP_CONFIG.MAX_VIDEOS_TO_FETCH && retryCount < maxRetries) {
                     try {
-                        console.log(`Fetching videos, offset: ${currentOffset}`);
+                        console.log(`Fetching videos batch, offset: ${currentOffset}`);
                         
                         // Call VK API to get liked videos
                         const response = await callVKAPI('fave.get', {
                             item_type: 'video',
                             offset: currentOffset,
-                            count: APP_CONFIG.BATCH_SIZE
+                            count: APP_CONFIG.BATCH_SIZE,
+                            extended: 1  // Get extended information
                         });
                         
                         if (response && response.items) {
                             const videos = response.items;
                             
-                            console.log(`Received ${videos.length} videos`);
+                            console.log(`Received ${videos.length} videos in batch`);
                             
                             if (videos.length === 0) {
                                 hasMoreVideos = false;
+                                console.log('No more videos found');
                                 break;
                             }
                             
                             // Process each video
-                            for (const video of videos) {
-                                // Check if it's a video object
-                                if (video.type !== 'video') continue;
+                            for (const item of videos) {
+                                // The structure might be different, let's check
+                                let video = item;
+                                
+                                // If it's a fave item with video inside
+                                if (item.type === 'video' && item.video) {
+                                    video = item.video;
+                                }
                                 
                                 const videoData = {
-                                    id: video.video.id || video.video.video_id,
-                                    owner_id: video.video.owner_id,
-                                    title: video.video.title || 'Untitled',
-                                    description: video.video.description || '',
-                                    duration: video.video.duration || 0,
-                                    views: video.video.views || 0,
-                                    date: video.video.date || Math.floor(Date.now() / 1000),
-                                    width: video.video.width || 0,
-                                    height: video.video.height || 0,
-                                    image: video.video.image || video.video.thumb || [],
-                                    player: video.video.player,
-                                    access_key: video.video.access_key,
-                                    adding_date: video.video.adding_date || video.date
+                                    id: video.id || video.video_id,
+                                    owner_id: video.owner_id,
+                                    title: video.title || 'Untitled Video',
+                                    description: video.description || '',
+                                    duration: video.duration || 0,
+                                    views: video.views || 0,
+                                    date: video.date || Math.floor(Date.now() / 1000),
+                                    width: video.width || 0,
+                                    height: video.height || 0,
+                                    image: video.image || video.thumb || video.photo_130 || video.photo_320 || [],
+                                    player: video.player,
+                                    access_key: video.access_key,
+                                    adding_date: item.adding_date || video.date
                                 };
                                 
                                 // Derive resolution
@@ -598,17 +650,28 @@
                             if (videos.length < APP_CONFIG.BATCH_SIZE) {
                                 hasMoreVideos = false;
                             }
+                            
+                            // Reset retry count on success
+                            retryCount = 0;
                         } else {
-                            console.warn('Unexpected API response:', response);
+                            console.warn('Unexpected API response structure:', response);
                             // Try to continue with what we have
                             hasMoreVideos = false;
                         }
                         
                     } catch (error) {
-                        console.error('Error fetching videos:', error);
-                        indexingError = error;
-                        showError('Failed to fetch videos from VK API', error);
-                        break;
+                        console.error('Error fetching videos batch:', error);
+                        retryCount++;
+                        
+                        if (retryCount >= maxRetries) {
+                            indexingError = error;
+                            showError('Failed to fetch videos after multiple attempts', error);
+                            break;
+                        }
+                        
+                        // Wait before retry
+                        await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+                        console.log(`Retrying... attempt ${retryCount}`);
                     }
                 }
                 
@@ -633,6 +696,11 @@
                 } else {
                     loadingMessage.textContent = 'No videos found in your favorites.';
                     loadingStats.textContent = 'Try liking some videos first';
+                    
+                    // If we have an error, show it
+                    if (indexingError) {
+                        showError('Could not fetch videos', indexingError);
+                    }
                 }
                 
                 // Wait a moment before hiding overlay
@@ -676,7 +744,8 @@
                 errorDetails.textContent = JSON.stringify({
                     message: error.message,
                     stack: error.stack,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    launchParams: launchParams
                 }, null, 2);
             }
             
@@ -703,14 +772,18 @@
                 const card = document.createElement('div');
                 card.className = 'video-card bg-[#1c1c1e] rounded-2xl overflow-hidden hover:transform hover:scale-[1.02] transition-transform duration-300';
                 
-                // Get thumbnail (try to get the best available)
+                // Get thumbnail
                 let thumbnail = '';
-                if (video.image && video.image.length > 0) {
+                if (Array.isArray(video.image) && video.image.length > 0) {
                     // Sort by width to get highest resolution
-                    const sortedImages = [...video.image].sort((a, b) => b.width - a.width);
-                    thumbnail = sortedImages[0].url;
+                    const sortedImages = [...video.image].sort((a, b) => (b.width || 0) - (a.width || 0));
+                    thumbnail = sortedImages[0].url || sortedImages[0];
                 } else if (typeof video.image === 'string') {
                     thumbnail = video.image;
+                } else if (video.photo_320) {
+                    thumbnail = video.photo_320;
+                } else if (video.photo_130) {
+                    thumbnail = video.photo_130;
                 }
                 
                 // Calculate duration category
@@ -721,10 +794,13 @@
                     durationCategory = 'medium';
                 }
                 
+                // Get resolution color class
+                const resolutionColor = getResolutionColor(video.resolution);
+                
                 card.innerHTML = `
                     <div class="relative">
                         ${thumbnail ? 
-                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover">` :
+                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover" onerror="this.onerror=null; this.src='data:image/svg+xml,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"320\" height=\"180\" viewBox=\"0 0 320 180\"><rect width=\"320\" height=\"180\" fill=\"%231c1c1e\"/><text x=\"160\" y=\"90\" font-family=\"Arial\" font-size=\"14\" fill=\"%23666\" text-anchor=\"middle\">No thumbnail</text></svg>'">` :
                             `<div class="w-full h-48 bg-gray-900 flex items-center justify-center">
                                 <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -734,7 +810,7 @@
                         <div class="absolute top-3 right-3 bg-black/80 text-white text-xs font-medium py-1 px-2 rounded">
                             ${formatDuration(video.duration)}
                         </div>
-                        <div class="absolute top-3 left-3 bg-${getResolutionColor(video.resolution)} text-white text-xs font-medium py-1 px-2 rounded">
+                        <div class="absolute top-3 left-3 bg-${resolutionColor} text-white text-xs font-medium py-1 px-2 rounded">
                             ${video.resolution}
                         </div>
                     </div>
@@ -1039,20 +1115,21 @@
         });
         
         // Initialize the app
+        parseLaunchParams();
         loadCachedData();
         
-        // Initialize VK Bridge events
-        vkBridge.subscribe(e => {
-            if (e.detail.type === 'VKWebAppUpdateConfig') {
-                // Handle theme change if needed
-            }
-        });
-        
-        // Test VK Bridge connection on load
-        vkBridge.send('VKWebAppGetLaunchParams').then(params => {
-            console.log('VK Launch Params:', params);
+        // Initialize VK Bridge
+        vkBridge.send('VKWebAppInit', {}).then(() => {
+            console.log('VK Bridge initialized');
+            
+            // Test the bridge
+            return vkBridge.send('VKWebAppGetLaunchParams');
+        }).then(params => {
+            console.log('VK Bridge test successful, launch params:', params);
+            launchParams = params;
         }).catch(error => {
-            console.error('Error getting launch params:', error);
+            console.error('VK Bridge initialization error:', error);
+            showError('VK Bridge initialization failed', error);
         });
     </script>
 </body>
