@@ -171,7 +171,7 @@
                     offset += 50;
                     
                     // Safety break
-                    if (offset >= 3000) hasMore = false;
+                    if (offset >= 30) hasMore = false;
                     
                     // Small delay to prevent hitting VK rate limits (Too many requests)
                     await sleep(200); 
