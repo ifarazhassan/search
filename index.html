@@ -111,10 +111,10 @@ const VKVideoIndexer = () => {
       
       let allVideos = [];
       let offset = 0;
-      const limit = 1000;
+      const LIMIT = 10;
       let hasMore = true;
 
-      while (hasMore && allVideos.length < limit) {
+      while (hasMore && allVideos.length < LIMIT) {
         const batch = await fetchVideoBatch(token, offset);
         
         if (!batch || !batch.items || batch.items.length === 0) {
@@ -140,8 +140,17 @@ const VKVideoIndexer = () => {
             };
           });
 
-        allVideos = [...allVideos, ...processedVideos];
+        // Only add videos up to the limit
+        const remainingSlots = LIMIT - allVideos.length;
+        const videosToAdd = processedVideos.slice(0, remainingSlots);
+        allVideos = [...allVideos, ...videosToAdd];
         offset += batch.items.length;
+        
+        // Stop if we've hit the limit
+        if (allVideos.length >= LIMIT) {
+          hasMore = false;
+          break;
+        }
         
         setProgress({ 
           current: allVideos.length, 
