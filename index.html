@@ -18,6 +18,7 @@
         .filter-chip.active { background: #007aff; border-color: #007aff; }
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 10px; }
+        .error-pre { background: #2c0000; color: #ff8888; padding: 10px; border-radius: 8px; font-size: 10px; overflow-x: auto; margin-top: 10px; text-align: left; }
     </style>
 </head>
 <body>
@@ -69,9 +70,14 @@
         <!-- Videos rendered here -->
     </div>
 
-    <div id="loading-overlay" class="hidden text-center py-20">
+    <div id="loading-overlay" class="hidden text-center py-10 bg-black/80 fixed inset-0 z-50 flex flex-col items-center justify-center p-6">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p id="loading-text" class="text-gray-400">Requesting permissions...</p>
+        <p id="loading-text" class="text-gray-200 font-medium">Requesting permissions...</p>
+        <div id="error-details" class="hidden w-full max-w-sm">
+            <p class="text-red-400 text-sm mt-4">Technical Error Details:</p>
+            <pre id="error-log" class="error-pre"></pre>
+            <button onclick="location.reload()" class="mt-4 text-xs text-blue-400 underline">Refresh and try again</button>
+        </div>
     </div>
 </div>
 
@@ -85,12 +91,15 @@
     const statsText = document.getElementById('stats-text');
     const loadingOverlay = document.getElementById('loading-overlay');
     const loadingText = document.getElementById('loading-text');
+    const errorDetails = document.getElementById('error-details');
+    const errorLog = document.getElementById('error-log');
     const searchBar = document.getElementById('search-bar');
     const sortSelect = document.getElementById('sort-select');
     const resFilter = document.getElementById('res-filter');
     const lenChips = document.querySelectorAll('.filter-chip');
 
-    vkBridge.send('VKWebAppInit');
+    // Initialize VK Bridge
+    vkBridge.send('VKWebAppInit').catch(e => console.error("Init failed", e));
 
     async function init() {
         try {
@@ -101,29 +110,37 @@
                 applyFilters();
             }
         } catch (e) {
-            console.error(e);
+            console.error("Cache load failed", e);
         }
     }
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     indexBtn.addEventListener('click', async () => {
         indexBtn.disabled = true;
         loadingOverlay.classList.remove('hidden');
+        errorDetails.classList.add('hidden');
         loadingText.innerText = "Requesting access token...";
         
         try {
-            // Request token specifically when button is clicked to ensure fresh session
-            const auth = await vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'video,fave' });
+            // Request token
+            const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
+                app_id: APP_ID, 
+                scope: 'video,fave,offline' // 'offline' helps token longevity
+            });
+
+            if (!auth.access_token) {
+                throw new Error("No access token returned by VK Bridge");
+            }
+            
             accessToken = auth.access_token;
-
-            if (!accessToken) throw new Error("Access token denied");
-
             grid.innerHTML = '';
             let allItems = [];
             let offset = 0;
             let hasMore = true;
 
             while (hasMore) {
-                loadingText.innerText = `Fetching batch at offset ${offset}... (Found ${allItems.length})`;
+                loadingText.innerText = `Indexing: ${allItems.length} found (Offset: ${offset})`;
                 
                 const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                     method: 'fave.get',
@@ -137,31 +154,33 @@
                     }
                 });
 
-                if (!response.response || !response.response.items) {
-                    console.error("Unexpected API response:", response);
-                    hasMore = false;
-                    break;
+                // Error handling for API method call
+                if (response.error_type || response.error_data) {
+                    throw response;
                 }
 
-                const rawItems = response.response.items;
+                const rawItems = response.response?.items || [];
                 if (rawItems.length === 0) {
                     hasMore = false;
                 } else {
-                    // Extract video object from the fave item wrapper
                     const videos = rawItems
                         .map(item => item.video || item)
-                        .filter(v => v && v.id); // Ensure we only keep valid video objects
+                        .filter(v => v && v.id);
                     
                     allItems = allItems.concat(videos);
                     offset += 50;
                     
-                    if (offset >= 2000) hasMore = false; // Higher safety limit
+                    // Safety break
+                    if (offset >= 3000) hasMore = false;
+                    
+                    // Small delay to prevent hitting VK rate limits (Too many requests)
+                    await sleep(200); 
                 }
             }
 
             if (allItems.length === 0) {
-                loadingText.innerText = "No 'Liked' videos found. Note: Only videos you clicked the 'Heart' icon on appear here.";
-                setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
+                loadingText.innerText = "Finished. 0 liked videos found.";
+                setTimeout(() => loadingOverlay.classList.add('hidden'), 2000);
             } else {
                 indexedVideos = allItems;
                 localStorage.setItem('indexed_liked_videos', JSON.stringify(indexedVideos));
@@ -171,9 +190,18 @@
             }
 
         } catch (e) {
-            console.error(e);
-            loadingText.innerText = "Error: " + (e.error_data?.error_msg || e.message || "Unknown error");
-            setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
+            console.error("Critical Error:", e);
+            loadingText.innerText = "Operation Failed";
+            errorDetails.classList.remove('hidden');
+            
+            // Show the actual error content so we can debug
+            const msg = e.error_data?.error_msg || e.message || "Unknown Error Object";
+            errorLog.innerText = JSON.stringify(e, null, 2);
+            
+            // Specific hint for App ID mismatch
+            if (JSON.stringify(e).includes("invalid app_id")) {
+                errorLog.innerText += "\n\nHINT: The App ID in your code (" + APP_ID + ") doesn't match the one in your VK dashboard.";
+            }
         } finally {
             indexBtn.disabled = false;
         }
@@ -192,18 +220,18 @@
     }
 
     function getResolution(v) {
-        const width = v.width || 0;
-        const height = v.height || 0;
-        if (width >= 3840 || height >= 2160) return "4K";
-        if (width >= 1920 || height >= 1080) return "1080p";
-        if (width >= 1280 || height >= 720) return "720p";
-        if (height >= 480) return "480p";
-        return height ? height + "p" : "";
+        const w = v.width || 0;
+        const h = v.height || 0;
+        if (w >= 3840 || h >= 2160) return "4K";
+        if (w >= 1920 || h >= 1080) return "1080p";
+        if (w >= 1280 || h >= 720) return "720p";
+        if (h >= 480) return "480p";
+        return h ? h + "p" : "";
     }
 
     function render(list) {
-        if (list.length === 0) {
-            grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">No videos match your filters.</div>';
+        if (list.length === 0 && indexedVideos.length > 0) {
+            grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">No match for current filters.</div>';
             return;
         }
         grid.innerHTML = list.map(v => {
@@ -229,17 +257,12 @@
 
     function applyFilters() {
         let list = [...indexedVideos];
-
         const query = searchBar.value.toLowerCase();
         if (query) list = list.filter(v => (v.title || '').toLowerCase().includes(query));
 
         const resVal = resFilter.value;
         if (resVal !== 'all') {
-            list = list.filter(v => {
-                const r = getResolution(v).toLowerCase();
-                if (resVal === '4k') return r.includes('4k');
-                return r.includes(resVal);
-            });
+            list = list.filter(v => getResolution(v).toLowerCase().includes(resVal));
         }
 
         const activeChip = document.querySelector('.filter-chip.active').dataset.len;
@@ -254,8 +277,10 @@
 
         const sortVal = sortSelect.value;
         list.sort((a, b) => {
-            if (sortVal === 'date-new') return (b.adding_date || b.date || 0) - (a.adding_date || a.date || 0);
-            if (sortVal === 'date-old') return (a.adding_date || a.date || 0) - (b.adding_date || b.date || 0);
+            const dateA = a.adding_date || a.date || 0;
+            const dateB = b.adding_date || b.date || 0;
+            if (sortVal === 'date-new') return dateB - dateA;
+            if (sortVal === 'date-old') return dateA - dateB;
             if (sortVal === 'dur-long') return (b.duration || 0) - (a.duration || 0);
             if (sortVal === 'dur-short') return (a.duration || 0) - (b.duration || 0);
             if (sortVal === 'views') return (b.views || 0) - (a.views || 0);
