@@ -52,8 +52,8 @@
         const APP_CONFIG = {
             APP_ID: 53969951,
             API_VERSION: '5.199',
-            MAX_VIDEOS: 1000,
-            BATCH_SIZE: 50,
+            MAX_VIDEOS: 10, // Limited to 10 videos
+            BATCH_SIZE: 10, // Fetch 10 at a time
             STORAGE_KEY: 'vk_videos_data',
             INDEXED_KEY: 'vk_last_indexed'
         };
@@ -95,7 +95,7 @@
                         <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                         </svg>
-                        <span id="index-text">Load Videos</span>
+                        <span id="index-text">Load Liked Videos</span>
                     </button>
                     
                     <button id="clear-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition">
@@ -204,7 +204,7 @@
                     <h3 class="text-2xl font-bold text-white mb-3">No Videos</h3>
                     <p class="text-gray-400 mb-8">Load your liked videos to get started</p>
                     <button id="empty-index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl">
-                        Load Videos
+                        Load Liked Videos
                     </button>
                 </div>
             </div>
@@ -308,22 +308,6 @@
                 userId = params.get('vk_user_id');
                 console.log('User ID:', userId);
                 
-                // Try to get access token
-                try {
-                    console.log('Trying to get token...');
-                    const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: APP_CONFIG.APP_ID,
-                        scope: 'video'  // Try with video scope instead
-                    });
-                    
-                    if (tokenResponse && tokenResponse.access_token) {
-                        accessToken = tokenResponse.access_token;
-                        console.log('Got access token');
-                    }
-                } catch (tokenError) {
-                    console.log('Could not get token, will try alternative method');
-                }
-                
                 loadCachedData();
                 
             } catch (error) {
@@ -416,106 +400,80 @@
             return date.toLocaleDateString();
         }
         
-        // Alternative method: Use video.get instead of fave.get
+        // Get liked videos using fave.get API
         async function getLikedVideos() {
-            console.log('Starting to fetch videos...');
+            console.log('Getting access token...');
             
-            // First, try to get token if we don't have it
-            if (!accessToken) {
-                try {
-                    loadingMessage.textContent = 'Requesting permissions...';
-                    const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: APP_CONFIG.APP_ID,
-                        scope: 'video'
-                    });
-                    accessToken = tokenResponse.access_token;
-                } catch (tokenError) {
-                    throw new Error('Please grant video permissions to continue');
-                }
+            // Get access token with favorites permission
+            loadingMessage.textContent = 'Requesting favorites permission...';
+            const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
+                app_id: APP_CONFIG.APP_ID,
+                scope: 'favorites'
+            });
+            
+            if (!tokenResponse || !tokenResponse.access_token) {
+                throw new Error('Failed to get access token. Please grant favorites permission.');
             }
             
-            const videos = [];
-            let offset = 0;
-            let hasMore = true;
+            accessToken = tokenResponse.access_token;
+            console.log('Got access token');
             
-            while (hasMore && videos.length < APP_CONFIG.MAX_VIDEOS) {
-                try {
-                    console.log(`Fetching batch at offset ${offset}`);
+            loadingMessage.textContent = 'Fetching your liked videos...';
+            
+            // Use fave.get to get ALL liked videos (not just your own)
+            const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                method: 'fave.get',
+                params: {
+                    item_type: 'video',
+                    count: APP_CONFIG.MAX_VIDEOS, // Only get 10 videos
+                    extended: 1,
+                    access_token: accessToken,
+                    v: APP_CONFIG.API_VERSION
+                }
+            });
+            
+            console.log('fave.get API Response:', response);
+            
+            if (response.error) {
+                console.error('API Error:', response.error);
+                throw new Error(`API Error: ${response.error.error_msg} (Code: ${response.error.error_code})`);
+            }
+            
+            if (!response.response || !response.response.items) {
+                throw new Error('No videos found in response');
+            }
+            
+            const items = response.response.items;
+            console.log(`Found ${items.length} liked videos`);
+            
+            const videos = [];
+            
+            // Process each liked video
+            for (const item of items) {
+                // fave.get returns items with video data inside
+                if (item.type === 'video' && item.video) {
+                    const video = item.video;
                     
-                    // Try alternative approach: get user's videos and filter for liked ones
-                    // Note: This is a workaround since fave.get might not be available
-                    const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                        method: 'video.get',
-                        params: {
-                            owner_id: userId,
-                            offset: offset,
-                            count: APP_CONFIG.BATCH_SIZE,
-                            extended: 1,
-                            access_token: accessToken,
-                            v: APP_CONFIG.API_VERSION
-                        }
-                    });
+                    const videoData = {
+                        id: video.id || video.video_id,
+                        owner_id: video.owner_id,
+                        title: video.title || 'Untitled Video',
+                        description: video.description || '',
+                        duration: video.duration || 0,
+                        views: video.views || 0,
+                        date: video.date || Math.floor(Date.now() / 1000),
+                        width: video.width || 0,
+                        height: video.height || 0,
+                        image: video.image || video.thumb || video.photo_320 || video.photo_130 || [],
+                        player: video.player,
+                        access_key: video.access_key,
+                        adding_date: item.adding_date || video.date,
+                        // fave.get includes when you added it to favorites
+                        added_date: item.date || item.adding_date
+                    };
                     
-                    console.log('API Response:', response);
-                    
-                    if (response.error) {
-                        console.error('API Error:', response.error);
-                        
-                        // If we get an access error, try fave.get as fallback
-                        if (response.error.error_code === 15 || response.error.error_code === 7) {
-                            throw new Error('Access denied. Please check app permissions.');
-                        }
-                        
-                        throw new Error(`API Error: ${response.error.error_msg}`);
-                    }
-                    
-                    if (response.response && response.response.items) {
-                        const items = response.response.items;
-                        
-                        if (items.length === 0) {
-                            hasMore = false;
-                            break;
-                        }
-                        
-                        // Process videos
-                        for (const video of items) {
-                            const videoData = {
-                                id: video.id,
-                                owner_id: video.owner_id,
-                                title: video.title || 'Untitled',
-                                duration: video.duration || 0,
-                                views: video.views || 0,
-                                date: video.date || Math.floor(Date.now() / 1000),
-                                width: video.width || 0,
-                                height: video.height || 0,
-                                image: video.image || video.photo_320 || [],
-                                player: video.player,
-                                is_liked: video.likes ? video.likes.user_likes : 0
-                            };
-                            
-                            // Only include liked videos
-                            if (videoData.is_liked) {
-                                videoData.resolution = getResolution(videoData.width, videoData.height);
-                                videos.push(videoData);
-                            }
-                        }
-                        
-                        offset += items.length;
-                        
-                        // Update progress
-                        const progress = Math.min(100, Math.round((offset / APP_CONFIG.MAX_VIDEOS) * 100));
-                        updateLoadingProgress(progress, videos.length);
-                        
-                        if (items.length < APP_CONFIG.BATCH_SIZE) {
-                            hasMore = false;
-                        }
-                    } else {
-                        hasMore = false;
-                    }
-                    
-                } catch (error) {
-                    console.error('Batch error:', error);
-                    throw error;
+                    videoData.resolution = getResolution(videoData.width, videoData.height);
+                    videos.push(videoData);
                 }
             }
             
@@ -529,7 +487,7 @@
             
             loadingOverlay.classList.remove('hidden');
             updateLoadingProgress(0, 0);
-            loadingMessage.textContent = 'Loading your videos...';
+            loadingMessage.textContent = 'Starting...';
             
             indexBtn.disabled = true;
             indexText.textContent = 'Loading...';
@@ -538,11 +496,11 @@
             errorPanel.classList.add('hidden');
             
             try {
-                console.log('Starting video indexing...');
+                console.log('Starting to fetch liked videos...');
                 
                 const fetchedVideos = await getLikedVideos();
                 
-                console.log(`Fetched ${fetchedVideos.length} liked videos`);
+                console.log(`Successfully fetched ${fetchedVideos.length} liked videos`);
                 
                 if (fetchedVideos.length > 0) {
                     allVideos = fetchedVideos;
@@ -559,13 +517,16 @@
                     emptyState.classList.add('hidden');
                     
                     loadingMessage.textContent = `Loaded ${fetchedVideos.length} liked videos!`;
+                    loadingStats.textContent = 'Success!';
+                    
+                    // Update progress to 100%
+                    updateLoadingProgress(100, fetchedVideos.length);
                 } else {
                     loadingMessage.textContent = 'No liked videos found';
+                    loadingStats.textContent = 'Try liking some videos first';
                     
-                    // Try to show demo data for testing
-                    if (allVideos.length === 0) {
-                        loadDemoData();
-                    }
+                    // Load demo data for testing
+                    loadDemoData();
                 }
                 
                 setTimeout(() => {
@@ -573,8 +534,8 @@
                 }, 1500);
                 
             } catch (error) {
-                console.error('Indexing failed:', error);
-                showError('Failed to load videos', error);
+                console.error('Failed to fetch liked videos:', error);
+                showError('Failed to load liked videos', error);
                 loadingOverlay.classList.add('hidden');
                 
                 // Load demo data if real data fails
@@ -584,7 +545,7 @@
             } finally {
                 isIndexing = false;
                 indexBtn.disabled = false;
-                indexText.textContent = 'Load Videos';
+                indexText.textContent = 'Load Liked Videos';
                 indexSpinner.classList.add('hidden');
                 progressContainer.classList.add('hidden');
             }
@@ -597,51 +558,68 @@
             const demoVideos = [
                 {
                     id: 456239019,
-                    owner_id: -1,
-                    title: 'Beautiful Nature Documentary',
+                    owner_id: -123456,
+                    title: 'Beautiful Nature Documentary from VK',
                     duration: 634,
                     views: 1250000,
                     date: Math.floor(Date.now() / 1000) - 86400,
                     width: 1920,
                     height: 1080,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Nature+Video', width: 320, height: 180 }],
-                    resolution: '1080p'
+                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Nature+Doc', width: 320, height: 180 }],
+                    resolution: '1080p',
+                    added_date: Math.floor(Date.now() / 1000) - 86400
                 },
                 {
                     id: 456239020,
-                    owner_id: -2,
-                    title: 'Tech Tutorial: JavaScript Basics',
+                    owner_id: -789012,
+                    title: 'Tech Tutorial: Advanced JavaScript',
                     duration: 875,
                     views: 85000,
                     date: Math.floor(Date.now() / 1000) - 172800,
                     width: 1280,
                     height: 720,
                     image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Tech+Tutorial', width: 320, height: 180 }],
-                    resolution: '720p'
+                    resolution: '720p',
+                    added_date: Math.floor(Date.now() / 1000) - 172800
                 },
                 {
                     id: 456239021,
-                    owner_id: -3,
-                    title: 'Music Performance Live',
+                    owner_id: -345678,
+                    title: 'Music Performance Live Concert',
                     duration: 245,
                     views: 250000,
                     date: Math.floor(Date.now() / 1000) - 259200,
                     width: 3840,
                     height: 2160,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Music+Live', width: 320, height: 180 }],
-                    resolution: '4K'
+                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Live+Music', width: 320, height: 180 }],
+                    resolution: '4K',
+                    added_date: Math.floor(Date.now() / 1000) - 259200
                 },
                 {
                     id: 456239022,
-                    owner_id: -4,
-                    title: 'Cooking Recipe: Pasta',
+                    owner_id: -901234,
+                    title: 'Cooking Recipe: Italian Pasta',
                     duration: 420,
                     views: 150000,
                     date: Math.floor(Date.now() / 1000) - 345600,
                     width: 854,
                     height: 480,
-                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Cooking', width: 320, height: 180 }],
-                    resolution: '480p'
+                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Cooking+Show', width: 320, height: 180 }],
+                    resolution: '480p',
+                    added_date: Math.floor(Date.now() / 1000) - 345600
+                },
+                {
+                    id: 456239023,
+                    owner_id: -567890,
+                    title: 'Travel Vlog: Japan Adventure',
+                    duration: 1120,
+                    views: 320000,
+                    date: Math.floor(Date.now() / 1000) - 432000,
+                    width: 1920,
+                    height: 1080,
+                    image: [{ url: 'https://via.placeholder.com/320x180/1c1c1e/666?text=Travel+Vlog', width: 320, height: 180 }],
+                    resolution: '1080p',
+                    added_date: Math.floor(Date.now() / 1000) - 432000
                 }
             ];
             
@@ -658,8 +636,8 @@
             
             emptyState.classList.add('hidden');
             
-            showError('Using demo data. Real videos require proper permissions.', 
-                     new Error('The app needs "video" and "favorites" permissions to access your liked videos.'));
+            showError('Using demo data. Enable "favorites" permission for real data.', 
+                     new Error('The app needs "favorites" permission to access your liked videos. Go to VK App Settings > Permissions and enable it.'));
         }
         
         function updateLoadingProgress(percent, count) {
@@ -681,7 +659,8 @@
                 errorDetails.textContent = JSON.stringify({
                     message: error.message,
                     timestamp: new Date().toISOString(),
-                    userId: userId
+                    userId: userId,
+                    suggestion: 'Make sure "favorites" permission is enabled in VK app settings'
                 }, null, 2);
             }
             
@@ -703,8 +682,14 @@
                 const card = document.createElement('div');
                 card.className = 'bg-[#1c1c1e] rounded-2xl overflow-hidden hover:scale-[1.02] transition-transform';
                 
-                const thumbnail = Array.isArray(video.image) && video.image.length > 0 ? 
-                    video.image[0].url : '';
+                let thumbnail = '';
+                if (Array.isArray(video.image) && video.image.length > 0) {
+                    // Get the first available thumbnail
+                    const firstImage = video.image.find(img => img && img.url);
+                    if (firstImage) {
+                        thumbnail = firstImage.url;
+                    }
+                }
                 
                 const durationCategory = video.duration < 300 ? 'short' : 
                                        video.duration < 1200 ? 'medium' : 'long';
@@ -714,7 +699,7 @@
                 card.innerHTML = `
                     <div class="relative">
                         ${thumbnail ? 
-                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover">` :
+                            `<img src="${thumbnail}" alt="${video.title}" class="w-full h-48 object-cover" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\"w-full h-48 bg-gray-900 flex items-center justify-center\"><svg class=\"w-12 h-12 text-gray-700\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z\"></path></svg></div>';">` :
                             `<div class="w-full h-48 bg-gray-900 flex items-center justify-center">
                                 <svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
@@ -742,16 +727,18 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
                                 </svg>
-                                <span>${formatDate(video.date)}</span>
+                                <span>${formatDate(video.added_date || video.date)}</span>
                             </div>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xs px-3 py-1 rounded-full ${getDurationCategoryColor(durationCategory)}">
                                 ${durationCategory.charAt(0).toUpperCase() + durationCategory.slice(1)}
                             </span>
-                            <span class="text-blue-400 text-sm font-medium">
-                                Liked
-                            </span>
+                            <a href="https://vk.com/video${video.owner_id}_${video.id}${video.access_key ? '?access_key=' + video.access_key : ''}" 
+                               target="_blank" 
+                               class="text-blue-400 hover:text-blue-300 text-sm font-medium">
+                                Open in VK
+                            </a>
                         </div>
                     </div>
                 `;
@@ -830,9 +817,9 @@
             filteredVideos.sort((a, b) => {
                 switch(sortBy) {
                     case 'newest':
-                        return b.date - a.date;
+                        return (b.added_date || b.date) - (a.added_date || a.date);
                     case 'oldest':
-                        return a.date - b.date;
+                        return (a.added_date || a.date) - (b.added_date || b.date);
                     case 'longest':
                         return b.duration - a.duration;
                     case 'shortest':
@@ -846,7 +833,6 @@
         }
         
         function updateActiveFiltersDisplay() {
-            // Simplified for now
             if (activeSearchTerm && activeSearchTerm.trim() !== '') {
                 activeSearchText.textContent = `Search: "${activeSearchTerm}"`;
                 activeFilters.classList.remove('hidden');
