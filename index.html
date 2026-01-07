@@ -71,7 +71,7 @@
 
     <div id="loading-overlay" class="hidden text-center py-20">
         <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-        <p id="loading-text" class="text-gray-400">Fetching videos from VK...</p>
+        <p id="loading-text" class="text-gray-400">Requesting permissions...</p>
     </div>
 </div>
 
@@ -80,11 +80,11 @@
     let indexedVideos = [];
     let accessToken = '';
 
-    // Elements
     const grid = document.getElementById('video-grid');
     const indexBtn = document.getElementById('index-btn');
     const statsText = document.getElementById('stats-text');
     const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
     const searchBar = document.getElementById('search-bar');
     const sortSelect = document.getElementById('sort-select');
     const resFilter = document.getElementById('res-filter');
@@ -92,12 +92,8 @@
 
     vkBridge.send('VKWebAppInit');
 
-    // Initialization
     async function init() {
         try {
-            const data = await vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'video,fave' });
-            accessToken = data.access_token;
-            // Load from cache if exists
             const cached = localStorage.getItem('indexed_liked_videos');
             if (cached) {
                 indexedVideos = JSON.parse(cached);
@@ -109,20 +105,26 @@
         }
     }
 
-    // Indexing Logic
     indexBtn.addEventListener('click', async () => {
-        if (!accessToken) return;
         indexBtn.disabled = true;
         loadingOverlay.classList.remove('hidden');
-        grid.innerHTML = '';
+        loadingText.innerText = "Requesting access token...";
         
-        let allItems = [];
-        let offset = 0;
-        let hasMore = true;
-
         try {
+            // Request token specifically when button is clicked to ensure fresh session
+            const auth = await vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'video,fave' });
+            accessToken = auth.access_token;
+
+            if (!accessToken) throw new Error("Access token denied");
+
+            grid.innerHTML = '';
+            let allItems = [];
+            let offset = 0;
+            let hasMore = true;
+
             while (hasMore) {
-                document.getElementById('loading-text').innerText = `Indexing: Found ${allItems.length} videos...`;
+                loadingText.innerText = `Fetching batch at offset ${offset}... (Found ${allItems.length})`;
+                
                 const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                     method: 'fave.get',
                     params: { 
@@ -135,25 +137,44 @@
                     }
                 });
 
-                const items = response.response.items.map(item => item.video);
-                if (items.length === 0) {
+                if (!response.response || !response.response.items) {
+                    console.error("Unexpected API response:", response);
+                    hasMore = false;
+                    break;
+                }
+
+                const rawItems = response.response.items;
+                if (rawItems.length === 0) {
                     hasMore = false;
                 } else {
-                    allItems = allItems.concat(items);
+                    // Extract video object from the fave item wrapper
+                    const videos = rawItems
+                        .map(item => item.video || item)
+                        .filter(v => v && v.id); // Ensure we only keep valid video objects
+                    
+                    allItems = allItems.concat(videos);
                     offset += 50;
-                    // Limit to 1000 for stability in preview, remove or increase for production
-                    if (offset >= 10) hasMore = false; 
+                    
+                    if (offset >= 2000) hasMore = false; // Higher safety limit
                 }
             }
 
-            indexedVideos = allItems;
-            localStorage.setItem('indexed_liked_videos', JSON.stringify(indexedVideos));
-            updateStats();
-            applyFilters();
+            if (allItems.length === 0) {
+                loadingText.innerText = "No 'Liked' videos found. Note: Only videos you clicked the 'Heart' icon on appear here.";
+                setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
+            } else {
+                indexedVideos = allItems;
+                localStorage.setItem('indexed_liked_videos', JSON.stringify(indexedVideos));
+                updateStats();
+                applyFilters();
+                loadingOverlay.classList.add('hidden');
+            }
+
         } catch (e) {
             console.error(e);
+            loadingText.innerText = "Error: " + (e.error_data?.error_msg || e.message || "Unknown error");
+            setTimeout(() => loadingOverlay.classList.add('hidden'), 3000);
         } finally {
-            loadingOverlay.classList.add('hidden');
             indexBtn.disabled = false;
         }
     });
@@ -163,6 +184,7 @@
     }
 
     function formatDuration(sec) {
+        if (!sec) return "0:00";
         const h = Math.floor(sec / 3600);
         const m = Math.floor((sec % 3600) / 60);
         const s = sec % 60;
@@ -170,28 +192,34 @@
     }
 
     function getResolution(v) {
-        if (v.width >= 3840) return "4K";
-        if (v.width >= 1920 || v.height >= 1080) return "1080p";
-        if (v.width >= 1280 || v.height >= 720) return "720p";
-        if (v.height >= 480) return "480p";
-        return v.height ? v.height + "p" : "";
+        const width = v.width || 0;
+        const height = v.height || 0;
+        if (width >= 3840 || height >= 2160) return "4K";
+        if (width >= 1920 || height >= 1080) return "1080p";
+        if (width >= 1280 || height >= 720) return "720p";
+        if (height >= 480) return "480p";
+        return height ? height + "p" : "";
     }
 
     function render(list) {
+        if (list.length === 0) {
+            grid.innerHTML = '<div class="col-span-full text-center py-10 text-gray-500">No videos match your filters.</div>';
+            return;
+        }
         grid.innerHTML = list.map(v => {
-            const thumb = v.image?.sort((a,b) => b.width - a.width)[0]?.url || '';
+            const thumb = v.image?.sort((a,b) => b.width - a.width)[0]?.url || v.photo_320 || v.photo_130 || '';
             const res = getResolution(v);
             return `
                 <a href="https://vk.com/video${v.owner_id}_${v.id}" target="_blank" class="video-card block overflow-hidden">
                     <div class="relative">
-                        <img src="${thumb}" class="w-full aspect-video object-cover">
+                        <img src="${thumb}" class="w-full aspect-video object-cover bg-gray-900" onerror="this.src='https://placehold.co/400x225/1c1c1e/3a3a3c?text=No+Preview'">
                         <div class="absolute bottom-2 right-2 flex gap-1">
                             ${res ? `<span class="badge bg-blue-600 text-white">${res}</span>` : ''}
                             <span class="badge text-white">${formatDuration(v.duration)}</span>
                         </div>
                     </div>
                     <div class="p-3">
-                        <h3 class="text-sm font-medium line-clamp-2 mb-1">${v.title}</h3>
+                        <h3 class="text-sm font-medium line-clamp-2 mb-1">${v.title || 'Untitled Video'}</h3>
                         <p class="text-xs text-gray-500">${Number(v.views || 0).toLocaleString()} views</p>
                     </div>
                 </a>
@@ -202,11 +230,9 @@
     function applyFilters() {
         let list = [...indexedVideos];
 
-        // Search
         const query = searchBar.value.toLowerCase();
-        if (query) list = list.filter(v => v.title.toLowerCase().includes(query));
+        if (query) list = list.filter(v => (v.title || '').toLowerCase().includes(query));
 
-        // Resolution
         const resVal = resFilter.value;
         if (resVal !== 'all') {
             list = list.filter(v => {
@@ -216,30 +242,28 @@
             });
         }
 
-        // Duration Chip
         const activeChip = document.querySelector('.filter-chip.active').dataset.len;
         if (activeChip !== 'all') {
             list = list.filter(v => {
-                if (activeChip === 'short') return v.duration < 300;
-                if (activeChip === 'med') return v.duration >= 300 && v.duration < 1200;
-                if (activeChip === 'long') return v.duration >= 1200;
+                const dur = v.duration || 0;
+                if (activeChip === 'short') return dur < 300;
+                if (activeChip === 'med') return dur >= 300 && dur < 1200;
+                if (activeChip === 'long') return dur >= 1200;
             });
         }
 
-        // Sorting
         const sortVal = sortSelect.value;
         list.sort((a, b) => {
-            if (sortVal === 'date-new') return b.adding_date - a.adding_date;
-            if (sortVal === 'date-old') return a.adding_date - b.adding_date;
-            if (sortVal === 'dur-long') return b.duration - a.duration;
-            if (sortVal === 'dur-short') return a.duration - b.duration;
+            if (sortVal === 'date-new') return (b.adding_date || b.date || 0) - (a.adding_date || a.date || 0);
+            if (sortVal === 'date-old') return (a.adding_date || a.date || 0) - (b.adding_date || b.date || 0);
+            if (sortVal === 'dur-long') return (b.duration || 0) - (a.duration || 0);
+            if (sortVal === 'dur-short') return (a.duration || 0) - (b.duration || 0);
             if (sortVal === 'views') return (b.views || 0) - (a.views || 0);
         });
 
         render(list);
     }
 
-    // UI Listeners
     searchBar.addEventListener('input', applyFilters);
     sortSelect.addEventListener('change', applyFilters);
     resFilter.addEventListener('change', applyFilters);
