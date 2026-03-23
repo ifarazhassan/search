@@ -3,42 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VK Discovery Pro</title>
+    <title>VK Discovery Engine</title>
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; }
-        .group-card { background: #111112; border: 1px solid #222; transition: all 0.2s ease; }
-        .group-card:hover { border-color: #444; transform: translateY(-2px); }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #050505; color: #fff; }
+        .glass-card { background: rgba(22, 22, 24, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .group-card:hover { border-color: #3b82f6; transform: translateY(-4px); box-shadow: 0 12px 40px -12px rgba(59, 130, 246, 0.4); }
         .spinner { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        input::placeholder { color: #4b5563; }
     </style>
 </head>
 <body class="min-h-screen pb-20">
-    <div class="container mx-auto px-4 py-12 max-w-6xl">
-        <header class="mb-12">
-            <h1 class="text-4xl font-black tracking-tight mb-2">Discovery</h1>
-            <p class="text-gray-500">Search communities, pages, and events.</p>
+    <div class="container mx-auto px-4 py-12 max-w-5xl">
+        <header class="text-center mb-16">
+            <h1 class="text-5xl font-extrabold tracking-tighter mb-4 bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent">Discovery</h1>
+            <p class="text-gray-500 font-medium">Global Community Search & Analytics</p>
         </header>
 
-        <div class="relative mb-10">
-            <input type="text" id="search-input" 
-                placeholder="Search keywords..." 
-                class="w-full bg-[#111] border border-[#222] rounded-2xl py-6 pl-8 pr-40 text-xl focus:outline-none focus:border-blue-500 transition-all shadow-2xl">
-            
-            <button id="search-btn" class="absolute right-3 top-3 bottom-3 bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-3">
-                <svg id="loading-icon" class="hidden w-5 h-5 spinner" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <span>Search</span>
-            </button>
+        <div class="glass-card rounded-3xl p-2 mb-10 shadow-2xl">
+            <div class="relative flex items-center">
+                <input type="text" id="search-input" 
+                    placeholder="Search by keyword, topic, or niche..." 
+                    class="w-full bg-transparent py-6 pl-8 pr-44 text-xl focus:outline-none transition-all">
+                
+                <div class="absolute right-2 flex gap-2">
+                    <button id="search-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-10 py-4 rounded-2xl font-bold transition-all active:scale-95 flex items-center gap-3">
+                        <svg id="loading-icon" class="hidden w-5 h-5 spinner" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Search</span>
+                    </button>
+                </div>
+            </div>
         </div>
 
-        <div id="results-count" class="text-gray-500 text-sm mb-6 font-medium uppercase tracking-widest">Ready</div>
-
-        <div id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div class="flex items-center justify-between mb-8 px-2">
+            <div id="results-count" class="text-xs font-black uppercase tracking-[0.2em] text-gray-600">Waiting for query...</div>
+            <div class="flex items-center gap-4 text-xs font-bold text-gray-400">
+                <span>Filter: Unrestricted</span>
+                <div class="w-8 h-4 bg-blue-600/20 rounded-full relative">
+                    <div class="absolute right-1 top-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+                </div>
             </div>
+        </div>
+
+        <div id="results-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity duration-300">
+            <div id="empty-state" class="col-span-full py-20 text-center">
+                <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+                <p class="text-gray-500">Search results will appear here</p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -52,7 +74,7 @@
         const loader = document.getElementById('loading-icon');
 
         async function init() {
-            try { await vkBridge.send('VKWebAppInit'); } catch (e) {}
+            try { await vkBridge.send('VKWebAppInit'); } catch (e) { console.warn("Bridge Init Skipped"); }
         }
 
         async function search() {
@@ -61,7 +83,7 @@
 
             btn.disabled = true;
             loader.classList.remove('hidden');
-            grid.style.opacity = '0.5';
+            grid.style.opacity = '0.3';
 
             try {
                 if (!accessToken) {
@@ -72,17 +94,16 @@
                     accessToken = auth.access_token;
                 }
 
-                // Call VK API with the corrected 'type' parameter
-                // We use 'group' (singular) as the primary type to ensure compatibility
+                // Call VK API with max permissive settings
                 const response = await vkBridge.send('VKWebAppCallAPIMethod', {
                     method: 'groups.search',
                     params: {
                         q: query,
                         count: 40,
                         extended: 1,
-                        safe_searching: 0, 
-                        type: 'group', // Fixed to singular 'group' to prevent invalid type errors
-                        fields: 'members_count,activity,description,verified',
+                        safe_searching: 0, // Requesting NO safe search
+                        type: 'group,page', // Broadened types
+                        fields: 'members_count,activity,description,verified,can_see_all_posts',
                         v: '5.131',
                         access_token: accessToken
                     }
@@ -92,9 +113,8 @@
                 render(results);
 
             } catch (err) {
-                console.error("API Error:", err);
-                const errorMsg = err.error_data?.error_msg || err.message || "Unknown Error";
-                alert("VK API Error: " + errorMsg);
+                console.error(err);
+                alert("VK API Error: " + (err.error_data?.error_msg || err.message));
             } finally {
                 btn.disabled = false;
                 loader.classList.add('hidden');
@@ -103,33 +123,39 @@
         }
 
         function render(groups) {
-            countDisplay.innerText = `Found ${groups.length} results`;
+            countDisplay.innerText = `${groups.length} Communities Found`;
             
             if (groups.length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-20 text-gray-600 italic">No matches found.</div>`;
+                grid.innerHTML = `<div class="col-span-full text-center py-20 text-gray-600 font-bold">No results found for "${input.value}".</div>`;
                 return;
             }
 
             grid.innerHTML = groups.map(g => {
                 const link = `https://vk.com/${g.screen_name || 'public' + g.id}`;
                 return `
-                <div class="group-card rounded-2xl p-6 flex flex-col">
-                    <div class="flex items-center gap-4 mb-4">
-                        <img src="${g.photo_100}" class="w-12 h-12 rounded-full border border-white/10">
+                <div class="glass-card group-card rounded-[2rem] p-6 flex flex-col h-full transition-all">
+                    <div class="flex items-start gap-4 mb-6">
+                        <img src="${g.photo_100}" class="w-14 h-14 rounded-2xl border border-white/10 shadow-xl">
                         <div class="min-w-0">
-                            <h3 class="font-bold text-white truncate text-sm">
-                                ${g.name} ${g.verified ? '✓' : ''}
+                            <h3 class="font-bold text-white truncate text-base leading-tight">
+                                ${g.name} ${g.verified ? '<span class="text-blue-500 ml-1">✓</span>' : ''}
                             </h3>
-                            <span class="text-[10px] text-blue-400 font-bold uppercase">${g.activity || 'Community'}</span>
+                            <span class="text-[10px] text-blue-400 font-black uppercase tracking-widest leading-loose">${g.activity || 'Community'}</span>
                         </div>
                     </div>
-                    <div class="mb-4">
-                        <span class="text-xl font-bold">${(g.members_count || 0).toLocaleString()}</span>
-                        <span class="text-[10px] text-gray-500 ml-1">MEMBERS</span>
+                    
+                    <div class="bg-white/5 rounded-2xl p-4 mb-6">
+                        <div class="text-2xl font-black text-white">${(g.members_count || 0).toLocaleString()}</div>
+                        <div class="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Active Members</div>
                     </div>
+
+                    <p class="text-gray-400 text-xs line-clamp-2 mb-8 italic leading-relaxed h-8">
+                        ${g.description ? g.description : 'No overview available for this community.'}
+                    </p>
+
                     <a href="${link}" target="_blank" 
-                        class="mt-auto block w-full bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white text-center text-xs font-bold py-3 rounded-xl transition-all">
-                        View
+                        class="mt-auto block w-full bg-white text-black text-center text-xs font-black py-4 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                        EXPLORE COMMUNITY
                     </a>
                 </div>
                 `;
