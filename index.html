@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VK Liked Videos Manager</title>
+    <title>VK Group Discovery Engine</title>
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -16,6 +16,7 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .spinner { animation: spin 1s linear infinite; }
         .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .group-card:hover { transform: translateY(-4px); border-color: #2D81E0; }
     </style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -23,140 +24,106 @@
         <header class="mb-8">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 class="text-3xl font-bold text-white">VK Liked Videos</h1>
-                    <p class="text-gray-400 mt-2">Manage and filter your favorite videos</p>
+                    <h1 class="text-3xl font-bold text-white">VK Group Discovery</h1>
+                    <p class="text-gray-400 mt-2">Search, index, and analyze VK communities</p>
                 </div>
-                <div class="bg-[#1c1c1e] rounded-xl p-4 min-w-[200px]">
+                <div class="bg-[#1c1c1e] rounded-xl p-4 min-w-[200px] border border-gray-800">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-gray-400 text-sm">Videos</p>
-                            <p id="video-count" class="text-2xl font-semibold">0</p>
+                            <p class="text-gray-400 text-sm">Total Indexed</p>
+                            <p id="group-count" class="text-2xl font-semibold">0</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-gray-400 text-sm">Last Updated</p>
-                            <p id="last-updated" class="text-sm">Never</p>
+                            <p class="text-gray-400 text-sm">Last Update</p>
+                            <p id="last-updated" class="text-sm font-medium text-blue-400">Never</p>
                         </div>
                     </div>
                 </div>
             </div>
         </header>
 
-        <div class="bg-[#1c1c1e] rounded-2xl p-6 mb-8 shadow-xl">
+        <div class="bg-[#1c1c1e] rounded-2xl p-6 mb-8 shadow-2xl border border-gray-800">
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div class="flex items-center gap-4">
-                    <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-xl flex items-center gap-2 transition disabled:opacity-50">
-                        <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span id="index-text">Load Liked Videos</span>
-                    </button>
-                    <button id="clear-btn" class="bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium py-3 px-6 rounded-xl transition">Clear Data</button>
-                </div>
-                <div class="flex-1 max-w-lg">
+                <div class="flex-1 max-w-2xl">
                     <div class="relative">
-                        <input id="search-input" type="text" placeholder="Search videos..." class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600">
+                        <input id="search-input" type="text" placeholder="Enter keywords (e.g. Technology, Gaming, News)..." class="w-full bg-black border border-gray-800 rounded-xl py-4 px-4 pl-12 text-white placeholder-gray-500 focus:outline-none focus:border-blue-600 transition-all">
                         <svg class="w-5 h-5 text-gray-500 absolute left-4 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
                         </svg>
                     </div>
                 </div>
+                <div class="flex items-center gap-4">
+                    <button id="index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-xl flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50">
+                        <svg id="index-spinner" class="w-5 h-5 hidden spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span id="index-text">Index Groups</span>
+                    </button>
+                    <button id="clear-btn" class="bg-gray-800 hover:bg-red-900/40 hover:text-red-400 text-gray-300 font-medium py-4 px-6 rounded-xl transition-all">Clear</button>
+                </div>
             </div>
             
-            <div class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-gray-800">
                 <div>
-                    <label class="block text-gray-400 text-sm mb-2">Resolution</label>
-                    <select id="resolution-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white">
-                        <option value="all">All Resolutions</option>
-                        <option value="4K">4K</option>
-                        <option value="1440p">1440p</option>
-                        <option value="1080p">1080p</option>
-                        <option value="720p">720p</option>
-                        <option value="480p">480p</option>
-                        <option value="360p">360p</option>
+                    <label class="block text-gray-400 text-xs uppercase tracking-wider font-bold mb-2">Member Count Range</label>
+                    <select id="size-filter" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white focus:border-blue-600 outline-none">
+                        <option value="all">Any Size</option>
+                        <option value="huge">Massive (1M+ members)</option>
+                        <option value="large">Large (100k - 1M)</option>
+                        <option value="medium">Medium (10k - 100k)</option>
+                        <option value="small">Small (< 10k)</option>
                     </select>
                 </div>
                 <div>
-                    <label class="block text-gray-400 text-sm mb-2">Duration</label>
+                    <label class="block text-gray-400 text-xs uppercase tracking-wider font-bold mb-2">Group Status</label>
                     <div class="flex gap-2">
-                        <button data-duration="short" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition">&lt;5m</button>
-                        <button data-duration="medium" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition">5-20m</button>
-                        <button data-duration="long" class="duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition">&gt;20m</button>
+                        <button data-status="all" class="status-chip active-chip bg-blue-600 text-white py-2.5 px-4 rounded-xl text-sm transition-all flex-1">All</button>
+                        <button data-status="verified" class="status-chip bg-gray-800 text-gray-400 py-2.5 px-4 rounded-xl text-sm transition-all flex-1">Verified</button>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-gray-400 text-sm mb-2">Sort By</label>
-                    <select id="sort-options" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white">
-                        <option value="newest">Newest First</option>
-                        <option value="oldest">Oldest First</option>
-                        <option value="longest">Longest First</option>
-                        <option value="shortest">Shortest First</option>
-                        <option value="most-viewed">Most Viewed</option>
-                        <option value="least-viewed">Least Viewed</option>
+                    <label class="block text-gray-400 text-xs uppercase tracking-wider font-bold mb-2">Sort Order</label>
+                    <select id="sort-options" class="w-full bg-black border border-gray-800 rounded-xl py-3 px-4 text-white focus:border-blue-600 outline-none">
+                        <option value="members-desc">Most Members</option>
+                        <option value="members-asc">Least Members</option>
+                        <option value="alphabetical">Alphabetical</option>
                     </select>
                 </div>
-                <div class="flex items-end">
-                    <div class="bg-black rounded-xl p-4 w-full">
-                        <p class="text-gray-400 text-sm">Showing</p>
-                        <p id="results-count" class="text-xl font-semibold">0 videos</p>
-                    </div>
-                </div>
             </div>
         </div>
 
-        <div id="videos-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
+        <div id="groups-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-12">
             <div id="empty-state" class="col-span-full text-center py-16">
-                <div class="bg-[#1c1c1e] rounded-2xl p-12 max-w-2xl mx-auto">
-                    <svg class="w-20 h-20 text-gray-700 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
-                    </svg>
-                    <h3 class="text-2xl font-bold text-white mb-3">No Liked Videos</h3>
-                    <p class="text-gray-400 mb-8">Load your favorite videos from VK</p>
-                    <button id="empty-index-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl">Load Liked Videos</button>
+                <div class="bg-[#1c1c1e] border border-gray-800 rounded-3xl p-12 max-w-2xl mx-auto">
+                    <div class="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-white mb-3">No Groups Indexed</h3>
+                    <p class="text-gray-400 mb-8">Enter a keyword above to start searching and indexing VK communities.</p>
                 </div>
             </div>
         </div>
 
-        <div id="error-panel" class="bg-red-900/20 border border-red-800 rounded-2xl p-6 mb-8 hidden">
-            <div class="flex justify-between items-start">
-                <div>
-                    <h3 class="text-xl font-bold text-white mb-2">Error</h3>
-                    <p id="error-message" class="text-red-300"></p>
-                </div>
-                <button id="hide-error" class="text-red-400 hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            <div class="mt-4">
-                <button id="show-details" class="text-red-400 hover:text-white text-sm font-medium flex items-center gap-2">
-                    <span>Show Details</span>
-                    <svg id="details-arrow" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
-                </button>
-                <div id="error-details" class="mt-3 p-4 bg-black/50 rounded-xl font-mono text-sm text-gray-300 hidden overflow-x-auto"></div>
-            </div>
-        </div>
-
-        <div id="loading-overlay" class="fixed inset-0 bg-black/90 flex items-center justify-center z-50 hidden">
-            <div class="bg-[#1c1c1e] rounded-2xl p-8 max-w-md w-full mx-4">
+        <div id="loading-overlay" class="fixed inset-0 bg-black/95 flex items-center justify-center z-50 hidden backdrop-blur-sm">
+            <div class="bg-[#1c1c1e] border border-gray-800 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
                 <div class="flex items-center justify-center mb-6">
-                    <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full spinner"></div>
+                    <div class="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full spinner"></div>
                 </div>
-                <h3 class="text-xl font-bold text-white text-center mb-2">Loading Videos</h3>
-                <p id="loading-message" class="text-gray-400 text-center mb-6">Please wait...</p>
-                <div class="mb-4">
-                    <div class="flex justify-between text-sm text-gray-400 mb-1">
-                        <span>Progress</span>
+                <h3 class="text-2xl font-bold text-white text-center mb-2">Indexing VK</h3>
+                <p id="loading-message" class="text-gray-400 text-center mb-8">Fetching community data...</p>
+                <div class="mb-6">
+                    <div class="flex justify-between text-sm font-bold text-gray-400 mb-2">
+                        <span class="uppercase tracking-widest">Progress</span>
                         <span id="loading-progress">0%</span>
                     </div>
-                    <div class="w-full bg-gray-800 rounded-full h-2.5">
-                        <div id="loading-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    <div class="w-full bg-gray-900 rounded-full h-3 overflow-hidden border border-gray-800">
+                        <div id="loading-bar" class="bg-blue-600 h-full transition-all duration-300" style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="text-center">
-                    <p id="loading-stats" class="text-gray-400 text-sm">Processing...</p>
+                <div class="text-center bg-black/40 py-3 rounded-xl border border-gray-800">
+                    <p id="loading-stats" class="text-blue-400 font-mono text-sm font-bold">Groups: 0</p>
                 </div>
             </div>
         </div>
@@ -164,481 +131,197 @@
 
     <script>
         const APP_CONFIG = {
-            APP_ID: 53969951,
-            API_VERSION: '5.199',
-            MAX_VIDEOS: 1000,
+            APP_ID: 51765279, // Replace with your App ID
+            API_VERSION: '5.131',
+            MAX_ITEMS: 500,
             BATCH_SIZE: 100,
-            STORAGE_KEY: 'vk_liked_videos_data',
-            INDEXED_KEY: 'vk_liked_videos_indexed'
+            STORAGE_KEY: 'vk_group_discovery_data'
         };
-        
-        let allVideos = [];
-        let filteredVideos = [];
-        let isIndexing = false;
-        let accessToken = null;
-        let userId = null;
-        let activeDurationFilter = null;
-        let activeSearchTerm = '';
-        
+
+        let allGroups = [];
+        let activeStatusFilter = 'all';
+
         const indexBtn = document.getElementById('index-btn');
         const indexText = document.getElementById('index-text');
         const indexSpinner = document.getElementById('index-spinner');
-        const clearBtn = document.getElementById('clear-btn');
-        const emptyIndexBtn = document.getElementById('empty-index-btn');
         const searchInput = document.getElementById('search-input');
-        const resolutionFilter = document.getElementById('resolution-filter');
-        const durationChips = document.querySelectorAll('.duration-chip');
-        const sortOptions = document.getElementById('sort-options');
-        const videosContainer = document.getElementById('videos-container');
-        const emptyState = document.getElementById('empty-state');
-        const videoCount = document.getElementById('video-count');
-        const lastUpdated = document.getElementById('last-updated');
-        const resultsCount = document.getElementById('results-count');
+        const groupsContainer = document.getElementById('groups-container');
         const loadingOverlay = document.getElementById('loading-overlay');
-        const loadingMessage = document.getElementById('loading-message');
-        const loadingProgress = document.getElementById('loading-progress');
         const loadingBar = document.getElementById('loading-bar');
+        const loadingProgress = document.getElementById('loading-progress');
         const loadingStats = document.getElementById('loading-stats');
-        const errorPanel = document.getElementById('error-panel');
-        const errorMessage = document.getElementById('error-message');
-        const errorDetails = document.getElementById('error-details');
-        const hideError = document.getElementById('hide-error');
-        const showDetails = document.getElementById('show-details');
-        const detailsArrow = document.getElementById('details-arrow');
-        
-        async function initialize() {
+
+        async function initBridge() {
             try {
-                console.log('Initializing VK Bridge...');
                 await vkBridge.send('VKWebAppInit');
-                console.log('VK Bridge initialized');
-                
-                const params = new URLSearchParams(window.location.search);
-                userId = params.get('vk_user_id');
-                console.log('User ID:', userId);
-                
-                loadCachedData();
-            } catch (error) {
-                console.error('Init error:', error);
-                showError('Failed to initialize. Please open in VK app.', error);
+                loadCache();
+            } catch (e) {
+                console.error("Bridge init failed", e);
             }
         }
-        
-        function loadCachedData() {
-            const cachedData = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
-            const lastIndexed = localStorage.getItem(APP_CONFIG.INDEXED_KEY);
-            
-            if (cachedData) {
-                try {
-                    allVideos = JSON.parse(cachedData);
-                    filteredVideos = [...allVideos];
-                    updateVideoCount();
-                    updateLastUpdated(lastIndexed);
-                    renderVideos();
-                    updateResultsCount();
-                    if (allVideos.length > 0) emptyState.classList.add('hidden');
-                    console.log('Loaded', allVideos.length, 'cached videos');
-                } catch (e) {
-                    console.error('Cache parse error:', e);
-                    localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
-                }
+
+        function loadCache() {
+            const cached = localStorage.getItem(APP_CONFIG.STORAGE_KEY);
+            if (cached) {
+                allGroups = JSON.parse(cached);
+                renderGroups();
+                updateStats();
             }
         }
-        
-        function updateVideoCount() {
-            videoCount.textContent = allVideos.length.toLocaleString();
-        }
-        
-        function updateLastUpdated(timestamp) {
-            if (timestamp) {
-                const date = new Date(parseInt(timestamp));
-                lastUpdated.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-            } else {
-                lastUpdated.textContent = 'Never';
+
+        async function performIndex() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                alert("Please enter a search term");
+                return;
             }
-        }
-        
-        function updateResultsCount() {
-            const count = filteredVideos.length;
-            resultsCount.textContent = count + ' ' + (count === 1 ? 'video' : 'videos');
-        }
-        
-        function getResolution(width, height) {
-            if (!width || !height) return 'Unknown';
-            if (height >= 2160) return '4K';
-            if (height >= 1440) return '1440p';
-            if (height >= 1080) return '1080p';
-            if (height >= 720) return '720p';
-            if (height >= 480) return '480p';
-            if (height >= 360) return '360p';
-            return 'Unknown';
-        }
-        
-        function formatDuration(seconds) {
-            if (!seconds) return '0:00';
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            if (hours > 0) {
-                return hours + ':' + minutes.toString().padStart(2, '0') + ':' + secs.toString().padStart(2, '0');
-            }
-            return minutes + ':' + secs.toString().padStart(2, '0');
-        }
-        
-        function formatViews(views) {
-            if (!views) return '0';
-            if (views >= 1000000) return (views / 1000000).toFixed(1) + 'M';
-            if (views >= 1000) return (views / 1000).toFixed(1) + 'K';
-            return views.toString();
-        }
-        
-        function formatDate(timestamp) {
-            const date = new Date(timestamp * 1000);
-            const now = new Date();
-            const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24));
-            if (diffDays === 0) return 'Today';
-            if (diffDays === 1) return 'Yesterday';
-            if (diffDays < 7) return diffDays + 'd ago';
-            if (diffDays < 30) return Math.floor(diffDays / 7) + 'w ago';
-            return date.toLocaleDateString();
-        }
-        
-        async function getLikedVideos() {
-            console.log('Starting to fetch liked videos...');
-            
-            if (!accessToken) {
-                try {
-                    loadingMessage.textContent = 'Requesting permissions...';
-                    console.log('Requesting auth token...');
-                    const tokenResponse = await vkBridge.send('VKWebAppGetAuthToken', {
-                        app_id: APP_CONFIG.APP_ID,
-                        scope: 'video,offline'
-                    });
-                    accessToken = tokenResponse.access_token;
-                    console.log('Access token obtained');
-                } catch (tokenError) {
-                    console.error('Token error:', tokenError);
-                    throw new Error('Please grant video permissions');
-                }
-            }
-            
-            const videos = [];
-            let offset = 0;
-            let hasMore = true;
-            let method = 'fave.get';
-            let useFallback = false;
-            
-            loadingMessage.textContent = 'Fetching your liked videos...';
-            
-            while (hasMore && videos.length < APP_CONFIG.MAX_VIDEOS) {
-                try {
-                    console.log('Fetching batch at offset ' + offset + ' using ' + method);
-                    let response;
-                    
-                    if (!useFallback) {
-                        try {
-                            response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                                method: 'fave.get',
-                                request_id: 'fave_' + Date.now() + '_' + offset,
-                                params: {
-                                    item_type: 'video',
-                                    offset: offset.toString(),
-                                    count: APP_CONFIG.BATCH_SIZE.toString(),
-                                    extended: '1',
-                                    v: APP_CONFIG.API_VERSION
-                                }
-                            });
-                        } catch (faveError) {
-                            console.warn('fave.get failed, trying fallback:', faveError);
-                            if (faveError.error_data && (faveError.error_data.error_code === 11 || faveError.error_data.error_code === 5)) {
-                                useFallback = true;
-                                method = 'video.getUserVideos';
-                                response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                                    method: 'video.getUserVideos',
-                                    request_id: 'uservideos_' + Date.now() + '_' + offset,
-                                    params: {
-                                        user_id: userId,
-                                        offset: offset.toString(),
-                                        count: APP_CONFIG.BATCH_SIZE.toString(),
-                                        extended: '1',
-                                        v: APP_CONFIG.API_VERSION
-                                    }
-                                });
-                            } else {
-                                throw faveError;
-                            }
-                        }
-                    } else {
-                        response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                            method: 'video.getUserVideos',
-                            request_id: 'uservideos_' + Date.now() + '_' + offset,
-                            params: {
-                                user_id: userId,
-                                offset: offset.toString(),
-                                count: APP_CONFIG.BATCH_SIZE.toString(),
-                                extended: '1',
-                                v: APP_CONFIG.API_VERSION
-                            }
-                        });
-                    }
-                    
-                    console.log('API Response:', response);
-                    
-                    if (response.error) {
-                        console.error('API Error:', response.error);
-                        throw new Error('API Error ' + response.error.error_code + ': ' + response.error.error_msg);
-                    }
-                    
-                    if (!response.response || !response.response.items) {
-                        console.log('No response items');
-                        hasMore = false;
-                        break;
-                    }
-                    
-                    const items = response.response.items;
-                    console.log('Received ' + items.length + ' items');
-                    
-                    if (items.length === 0) {
-                        hasMore = false;
-                        break;
-                    }
-                    
-                    for (const item of items) {
-                        const video = item.video || item;
-                        if (!video) continue;
-                        
-                        const videoData = {
-                            id: video.id,
-                            owner_id: video.owner_id,
-                            title: video.title || 'Untitled',
-                            duration: video.duration || 0,
-                            views: video.views || 0,
-                            date: video.adding_date || video.date || Math.floor(Date.now() / 1000),
-                            width: video.width || 0,
-                            height: video.height || 0,
-                            image: video.image || video.photo_320 || '',
-                            player: video.player || '',
-                            resolution: getResolution(video.width, video.height)
-                        };
-                        videos.push(videoData);
-                    }
-                    
-                    offset += items.length;
-                    const totalCount = response.response.count || videos.length;
-                    const progress = Math.min(100, Math.round((videos.length / Math.min(totalCount, APP_CONFIG.MAX_VIDEOS)) * 100));
-                    updateLoadingProgress(progress, videos.length);
-                    
-                    if (items.length < APP_CONFIG.BATCH_SIZE) {
-                        hasMore = false;
-                    }
-                    
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                } catch (error) {
-                    console.error('Batch error:', error);
-                    throw error;
-                }
-            }
-            
-            console.log('Fetched total of ' + videos.length + ' videos using ' + method);
-            if (useFallback) {
-                loadingMessage.textContent = 'Note: Using user videos. Found ' + videos.length + ' videos.';
-            }
-            return videos;
-        }
-        
-        async function indexVideos() {
-            if (isIndexing) return;
-            isIndexing = true;
-            loadingOverlay.classList.remove('hidden');
-            updateLoadingProgress(0, 0);
+
             indexBtn.disabled = true;
-            indexText.textContent = 'Loading...';
             indexSpinner.classList.remove('hidden');
-            errorPanel.classList.add('hidden');
+            loadingOverlay.classList.remove('hidden');
             
+            let fetched = [];
+            let offset = 0;
+
             try {
-                console.log('Starting video indexing...');
-                const fetchedVideos = await getLikedVideos();
-                console.log('Successfully fetched ' + fetchedVideos.length + ' videos');
+                const { access_token } = await vkBridge.send('VKWebAppGetAuthToken', { 
+                    app_id: APP_CONFIG.APP_ID, 
+                    scope: 'groups' 
+                });
+
+                while (offset < APP_CONFIG.MAX_ITEMS) {
+                    const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                        method: 'groups.search',
+                        params: {
+                            q: query,
+                            count: APP_CONFIG.BATCH_SIZE,
+                            offset: offset,
+                            extended: 1,
+                            fields: 'members_count,activity,verified,description',
+                            v: APP_CONFIG.API_VERSION,
+                            access_token
+                        }
+                    });
+
+                    const items = response.items || [];
+                    if (items.length === 0) break;
+
+                    fetched = [...fetched, ...items];
+                    offset += APP_CONFIG.BATCH_SIZE;
+
+                    const progress = Math.round((fetched.length / APP_CONFIG.MAX_ITEMS) * 100);
+                    loadingBar.style.width = `${progress}%`;
+                    loadingProgress.innerText = `${progress}%`;
+                    loadingStats.innerText = `Found: ${fetched.length}`;
+
+                    if (items.length < APP_CONFIG.BATCH_SIZE) break;
+                }
+
+                allGroups = fetched;
+                localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allGroups));
+                localStorage.setItem('vk_last_update', Date.now());
                 
-                allVideos = fetchedVideos;
-                filteredVideos = [...allVideos];
-                localStorage.setItem(APP_CONFIG.STORAGE_KEY, JSON.stringify(allVideos));
-                localStorage.setItem(APP_CONFIG.INDEXED_KEY, Date.now().toString());
-                updateVideoCount();
-                updateLastUpdated(Date.now().toString());
-                renderVideos();
-                updateResultsCount();
-                emptyState.classList.add('hidden');
-                loadingMessage.textContent = 'Successfully loaded ' + fetchedVideos.length + ' videos!';
-                setTimeout(() => { loadingOverlay.classList.add('hidden'); }, 1500);
-            } catch (error) {
-                console.error('Indexing failed:', error);
-                showError('Failed to load videos', error);
-                loadingOverlay.classList.add('hidden');
+                renderGroups();
+                updateStats();
+                
+            } catch (err) {
+                console.error(err);
+                alert("Search failed. Check console for details.");
             } finally {
-                isIndexing = false;
+                loadingOverlay.classList.add('hidden');
                 indexBtn.disabled = false;
-                indexText.textContent = 'Load Liked Videos';
                 indexSpinner.classList.add('hidden');
             }
         }
-        
-        function updateLoadingProgress(percent, count) {
-            loadingProgress.textContent = percent + '%';
-            loadingBar.style.width = percent + '%';
-            loadingStats.textContent = 'Found ' + count + ' videos';
-        }
-        
-        function showError(message, error) {
-            errorMessage.textContent = message;
-            if (error) {
-                const errorInfo = {
-                    message: error.message || error.toString(),
-                    error_type: error.error_type,
-                    error_code: error.error_code,
-                    error_data: error.error_data,
-                    timestamp: new Date().toISOString(),
-                    userId: userId,
-                    hasToken: Boolean(accessToken)
-                };
-                console.error('Full error:', error);
-                errorDetails.textContent = JSON.stringify(errorInfo, null, 2);
-            }
-            errorPanel.classList.remove('hidden');
-        }
-        
-        function renderVideos() {
-            videosContainer.innerHTML = '';
-            if (filteredVideos.length === 0) {
-                emptyState.classList.remove('hidden');
+
+        function renderGroups() {
+            const sizeFilter = document.getElementById('size-filter').value;
+            const sortVal = document.getElementById('sort-options').value;
+
+            let filtered = allGroups.filter(g => {
+                const members = g.members_count || 0;
+                const matchesStatus = activeStatusFilter === 'all' || (activeStatusFilter === 'verified' && g.verified);
+                
+                let matchesSize = true;
+                if (sizeFilter === 'huge') matchesSize = members >= 1000000;
+                else if (sizeFilter === 'large') matchesSize = members >= 100000 && members < 1000000;
+                else if (sizeFilter === 'medium') matchesSize = members >= 10000 && members < 100000;
+                else if (sizeFilter === 'small') matchesSize = members < 10000;
+
+                return matchesStatus && matchesSize;
+            });
+
+            if (sortVal === 'members-desc') filtered.sort((a, b) => b.members_count - a.members_count);
+            else if (sortVal === 'members-asc') filtered.sort((a, b) => a.members_count - b.members_count);
+            else if (sortVal === 'alphabetical') filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+            if (filtered.length === 0) {
+                document.getElementById('empty-state').classList.remove('hidden');
+                groupsContainer.innerHTML = '';
+                groupsContainer.appendChild(document.getElementById('empty-state'));
                 return;
             }
-            emptyState.classList.add('hidden');
-            
-            filteredVideos.forEach(video => {
-                const card = document.createElement('div');
-                card.className = 'bg-[#1c1c1e] rounded-2xl overflow-hidden hover:scale-[1.02] transition-transform cursor-pointer';
-                const thumbnail = Array.isArray(video.image) && video.image.length > 0 ? video.image[0].url : (typeof video.image === 'string' ? video.image : '');
-                const resolutionColor = getResolutionColor(video.resolution);
-                
-                card.innerHTML = '<div class="relative">' + 
-                    (thumbnail ? '<img src="' + thumbnail + '" alt="' + video.title + '" class="w-full h-48 object-cover">' :
-                    '<div class="w-full h-48 bg-gray-900 flex items-center justify-center"><svg class="w-12 h-12 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg></div>') +
-                    '<div class="absolute top-3 right-3 bg-black/80 text-white text-xs font-medium py-1 px-2 rounded">' + formatDuration(video.duration) + '</div>' +
-                    '<div class="absolute top-3 left-3 ' + resolutionColor + ' text-white text-xs font-medium py-1 px-2 rounded">' + video.resolution + '</div>' +
-                    '</div><div class="p-4"><h3 class="font-semibold text-white text-lg mb-2 line-clamp-2">' + video.title + '</h3>' +
-                    '<div class="flex justify-between text-gray-400 text-sm"><div class="flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg><span>' + formatViews(video.views) + '</span></div>' +
-                    '<div class="flex items-center gap-1"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg><span>' + formatDate(video.date) + '</span></div></div></div>';
-                
-                if (video.player) {
-                    card.addEventListener('click', () => { window.open(video.player, '_blank'); });
-                }
-                videosContainer.appendChild(card);
-            });
-            updateResultsCount();
+
+            document.getElementById('empty-state').classList.add('hidden');
+            groupsContainer.innerHTML = filtered.map(group => `
+                <div class="group-card bg-[#1c1c1e] border border-gray-800 rounded-2xl p-5 transition-all duration-300 hover:shadow-2xl">
+                    <div class="flex items-center gap-4 mb-4">
+                        <img src="${group.photo_100}" class="w-14 h-14 rounded-full border-2 border-gray-700 shadow-lg">
+                        <div class="overflow-hidden">
+                            <h3 class="font-bold text-white truncate flex items-center gap-1">
+                                ${group.name}
+                                ${group.verified ? '<svg class="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' : ''}
+                            </h3>
+                            <p class="text-xs text-gray-500 uppercase font-bold tracking-tighter">${group.activity || 'Community'}</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/40 rounded-xl p-3 mb-4">
+                        <p class="text-2xl font-bold text-blue-500">${(group.members_count || 0).toLocaleString()}</p>
+                        <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Members</p>
+                    </div>
+                    <p class="text-gray-400 text-sm line-clamp-2 mb-4 h-10 leading-relaxed">${group.description || 'No description provided.'}</p>
+                    <button onclick="window.open('https://vk.com/${group.screen_name || 'public'+group.id}', '_blank')" class="w-full bg-gray-800 hover:bg-blue-600 text-white text-sm font-bold py-3 rounded-xl transition-colors">
+                        View Community
+                    </button>
+                </div>
+            `).join('');
         }
-        
-        function getResolutionColor(resolution) {
-            const colors = { '4K': 'bg-purple-600', '1440p': 'bg-indigo-600', '1080p': 'bg-green-600', '720p': 'bg-blue-600', '480p': 'bg-yellow-600', '360p': 'bg-orange-600' };
-            return colors[resolution] || 'bg-gray-600';
-        }
-        
-        function filterVideos() {
-            if (allVideos.length === 0) {
-                filteredVideos = [];
-                renderVideos();
-                return;
+
+        function updateStats() {
+            document.getElementById('group-count').innerText = allGroups.length;
+            const last = localStorage.getItem('vk_last_update');
+            if (last) {
+                const date = new Date(parseInt(last));
+                document.getElementById('last-updated').innerText = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             }
-            filteredVideos = allVideos.filter(video => {
-                if (activeSearchTerm && activeSearchTerm.trim() !== '') {
-                    if (!video.title.toLowerCase().includes(activeSearchTerm.toLowerCase())) return false;
-                }
-                const selectedResolution = resolutionFilter.value;
-                if (selectedResolution !== 'all' && video.resolution !== selectedResolution) return false;
-                if (activeDurationFilter) {
-                    const duration = video.duration;
-                    if (activeDurationFilter === 'short' && duration >= 300) return false;
-                    if (activeDurationFilter === 'medium' && (duration < 300 || duration > 1200)) return false;
-                    if (activeDurationFilter === 'long' && duration <= 1200) return false;
-                }
-                return true;
-            });
-            sortVideos();
-            renderVideos();
         }
-        
-        function sortVideos() {
-            const sortBy = sortOptions.value;
-            filteredVideos.sort((a, b) => {
-                if (sortBy === 'newest') return b.date - a.date;
-                if (sortBy === 'oldest') return a.date - b.date;
-                if (sortBy === 'longest') return b.duration - a.duration;
-                if (sortBy === 'shortest') return a.duration - b.duration;
-                if (sortBy === 'most-viewed') return b.views - a.views;
-                if (sortBy === 'least-viewed') return a.views - b.views;
-                return 0;
-            });
-        }
-        
-        indexBtn.addEventListener('click', indexVideos);
-        emptyIndexBtn.addEventListener('click', indexVideos);
-        clearBtn.addEventListener('click', function() {
-            if (confirm('Clear all cached data?')) {
+
+        // Listeners
+        indexBtn.addEventListener('click', performIndex);
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            if(confirm('Clear all indexed data?')) {
                 localStorage.removeItem(APP_CONFIG.STORAGE_KEY);
-                localStorage.removeItem(APP_CONFIG.INDEXED_KEY);
-                allVideos = [];
-                filteredVideos = [];
-                updateVideoCount();
-                updateLastUpdated(null);
-                renderVideos();
-                updateResultsCount();
-                emptyState.classList.remove('hidden');
-                searchInput.value = '';
-                resolutionFilter.value = 'all';
-                activeDurationFilter = null;
-                sortOptions.value = 'newest';
-                activeSearchTerm = '';
-                durationChips.forEach(chip => {
-                    chip.className = 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                });
+                allGroups = [];
+                renderGroups();
+                updateStats();
             }
         });
-        searchInput.addEventListener('input', function() {
-            activeSearchTerm = this.value;
-            filterVideos();
-        });
-        resolutionFilter.addEventListener('change', filterVideos);
-        durationChips.forEach(chip => {
-            chip.addEventListener('click', function() {
-                const duration = this.getAttribute('data-duration');
-                if (activeDurationFilter === duration) {
-                    activeDurationFilter = null;
-                    this.className = 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                } else {
-                    activeDurationFilter = duration;
-                    durationChips.forEach(c => {
-                        c.className = c === this ? 'duration-chip bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-xl text-sm transition' : 'duration-chip bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 px-4 rounded-xl text-sm transition';
-                    });
-                }
-                filterVideos();
+
+        document.querySelectorAll('.status-chip').forEach(chip => {
+            chip.addEventListener('click', (e) => {
+                document.querySelectorAll('.status-chip').forEach(c => c.classList.remove('bg-blue-600', 'text-white'));
+                document.querySelectorAll('.status-chip').forEach(c => c.classList.add('bg-gray-800', 'text-gray-400'));
+                e.target.classList.remove('bg-gray-800', 'text-gray-400');
+                e.target.classList.add('bg-blue-600', 'text-white');
+                activeStatusFilter = e.target.dataset.status;
+                renderGroups();
             });
         });
-        sortOptions.addEventListener('change', function() { sortVideos(); renderVideos(); });
-        hideError.addEventListener('click', function() { errorPanel.classList.add('hidden'); });
-        showDetails.addEventListener('click', function() {
-            const isHidden = errorDetails.classList.contains('hidden');
-            if (isHidden) {
-                errorDetails.classList.remove('hidden');
-                showDetails.querySelector('span').textContent = 'Hide Details';
-                detailsArrow.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>';
-            } else {
-                errorDetails.classList.add('hidden');
-                showDetails.querySelector('span').textContent = 'Show Details';
-                detailsArrow.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>';
-            }
-        });
-        document.addEventListener('DOMContentLoaded', initialize);
+
+        document.getElementById('size-filter').addEventListener('change', renderGroups);
+        document.getElementById('sort-options').addEventListener('change', renderGroups);
+
+        initBridge();
     </script>
 </body>
 </html>
