@@ -72,110 +72,65 @@
         </div>
     </div>
 
-    <script>
-        const APP_ID = 53969951; // Default ID, change if needed
-        let accessToken = null;
+  <script>
+    const APP_ID = 53969951; 
+    let accessToken = null;
 
-        const input = document.getElementById('search-input');
-        const btn = document.getElementById('search-btn');
-        const grid = document.getElementById('results-grid');
-        const countDisplay = document.getElementById('results-count');
-        const loader = document.getElementById('loading-icon');
-        const sortSelect = document.getElementById('sort-order');
+    // ... (Keep the rest of your UI variables)
 
-        async function init() {
-            try {
-                await vkBridge.send('VKWebAppInit');
-                document.getElementById('status-badge').classList.remove('hidden');
-            } catch (e) { console.error(e); }
-        }
+    async function search() {
+        const query = input.value.trim();
+        if (!query) return;
 
-        async function search() {
-            const query = input.value.trim();
-            if (!query) return;
+        btn.disabled = true;
+        loader.classList.remove('hidden');
+        grid.style.opacity = '0.5';
 
-            // UI Loading State
-            btn.disabled = true;
-            loader.classList.remove('hidden');
-            grid.style.opacity = '0.5';
-
-            try {
-                if (!accessToken) {
-                    const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
-                        app_id: APP_ID, 
-                        scope: 'groups' 
-                    });
-                    accessToken = auth.access_token;
-                }
-
-                const data = await vkBridge.send('VKWebAppCallAPIMethod', {
-                    method: 'groups.search',
-                    params: {
-                        q: query,
-                        count: 40,
-                        extended: 1,
-                        sort: sortSelect.value,
-                        fields: 'members_count,activity,verified,description',
-                        v: '5.131',
-                        access_token: accessToken
-                    }
+        try {
+            // Re-check token for every new session
+            if (!accessToken) {
+                const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
+                    app_id: APP_ID, 
+                    scope: 'groups' 
                 });
-
-                render(data.items || []);
-            } catch (err) {
-                console.error(err);
-                alert("API Error: Check console for details.");
-            } finally {
-                btn.disabled = false;
-                loader.classList.add('hidden');
-                grid.style.opacity = '1';
+                accessToken = auth.access_token;
             }
-        }
 
-        function render(groups) {
-            countDisplay.innerText = `${groups.length} results`;
+            const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                method: 'groups.search',
+                params: {
+                    q: query,
+                    count: 50,
+                    extended: 1,
+                    sort: document.getElementById('sort-order').value,
+                    // REMOVE RESTRICTIONS
+                    safe_searching: 0, 
+                    type: 'group,page,event',
+                    fields: 'members_count,activity,verified,description,can_see_all_posts',
+                    v: '5.131',
+                    access_token: accessToken
+                }
+            });
+
+            // VK API returns { response: { count: X, items: [...] } }
+            // or sometimes just the object depending on the bridge version
+            const results = response.items || response.response?.items || [];
             
-            if (groups.length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">No communities found for "${input.value}"</div>`;
-                return;
-            }
+            console.log("Search results:", results); // Check your browser console!
+            render(results);
 
-            grid.innerHTML = groups.map(g => `
-                <div class="group-card rounded-2xl p-5 flex flex-col">
-                    <div class="flex items-start gap-4 mb-4">
-                        <img src="${g.photo_100}" class="w-12 h-12 rounded-full shadow-lg">
-                        <div class="min-w-0">
-                            <h3 class="font-bold text-white truncate flex items-center gap-1">
-                                ${g.name}
-                                ${g.verified ? '<svg class="w-4 h-4 text-blue-500 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' : ''}
-                            </h3>
-                            <p class="text-[10px] text-gray-500 uppercase font-black tracking-widest">${g.activity || 'Community'}</p>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <span class="text-xl font-bold text-white">${(g.members_count || 0).toLocaleString()}</span>
-                        <span class="text-xs text-gray-500 ml-1">followers</span>
-                    </div>
-
-                    <p class="text-gray-400 text-xs line-clamp-2 mb-6 h-8 leading-relaxed italic">
-                        ${g.description ? g.description : 'No description provided.'}
-                    </p>
-
-                    <button onclick="window.open('https://vk.com/${g.screen_name || 'public'+g.id}', '_blank')" 
-                        class="mt-auto w-full bg-white/5 hover:bg-blue-600 text-white text-xs font-bold py-3 rounded-xl transition-all border border-white/5 hover:border-blue-500">
-                        View Community
-                    </button>
-                </div>
-            `).join('');
+        } catch (err) {
+            console.error("Full Error Object:", err);
+            const msg = err.error_data?.error_msg || err.message || "Unknown Connection Error";
+            alert("VK API Error: " + msg);
+        } finally {
+            btn.disabled = false;
+            loader.classList.add('hidden');
+            grid.style.opacity = '1';
         }
-
-        // Events
-        btn.addEventListener('click', search);
-        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') search(); });
-        sortSelect.addEventListener('change', search);
-
-        init();
-    </script>
+    }
+    
+    // ... (Keep your render function)
+</script>
 </body>
 </html>
