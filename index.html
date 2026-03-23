@@ -8,128 +8,177 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background-color: #000; color: #fff; }
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1c1c1e; }
-        ::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 4px; }
-        .group-card { background: #1c1c1e; border: 1px solid #2c2c2e; transition: all 0.2s ease; }
-        .group-card:hover { border-color: #2D81E0; transform: translateY(-2px); }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0b; color: #fff; }
+        .group-card { background: #161618; border: 1px solid #27272a; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .group-card:hover { border-color: #3b82f6; transform: translateY(-4px); box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.3); }
         .spinner { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     </style>
 </head>
-<body class="min-h-screen pb-12">
-    <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <header class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
+<body class="min-h-screen pb-20">
+    <div class="container mx-auto px-4 py-12 max-w-6xl">
+        <header class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
             <div>
-                <h1 class="text-3xl font-bold tracking-tight">Community Finder</h1>
-                <p class="text-gray-500 text-sm mt-1">Search millions of VK groups and pages in real-time</p>
+                <h1 class="text-4xl font-black tracking-tight mb-2">Discovery</h1>
+                <p class="text-gray-500 font-medium">Real-time VK Community Search Engine</p>
             </div>
-            <div id="status-badge" class="hidden md:flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-full">
-                <span class="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>
-                <span class="text-blue-500 text-xs font-bold uppercase tracking-widest">Live API Connection</span>
+            <div id="status-badge" class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-2xl">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span class="text-emerald-500 text-xs font-bold uppercase tracking-widest">System Active</span>
             </div>
         </header>
 
-        <div class="relative group mb-8">
-            <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                <svg class="h-5 w-5 text-gray-500 group-focus-within:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-            </div>
+        <div class="relative mb-10">
             <input type="text" id="search-input" 
-                placeholder="What are you looking for? (e.g. Photography, Moscow, Indie Rock)" 
-                class="block w-full bg-[#1c1c1e] border border-[#2c2c2e] rounded-2xl py-5 pl-14 pr-32 text-lg focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition-all placeholder-gray-600 shadow-2xl">
-            <button id="search-btn" class="absolute right-3 top-2.5 bottom-2.5 bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-2">
-                <svg id="loading-icon" class="hidden w-4 h-4 spinner" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                </svg>
-                <span>Search</span>
-            </button>
+                placeholder="Search for music, art, gaming, or news..." 
+                class="w-full bg-[#161618] border border-[#27272a] rounded-2xl py-6 pl-8 pr-40 text-xl focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all shadow-2xl">
+            
+            <div class="absolute right-3 top-3 bottom-3 flex gap-2">
+                <button id="search-btn" class="bg-blue-600 hover:bg-blue-500 text-white px-8 rounded-xl font-bold transition-all active:scale-95 flex items-center gap-3">
+                    <svg id="loading-icon" class="hidden w-5 h-5 spinner" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span>Search</span>
+                </button>
+            </div>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-4 mb-8 text-sm">
-            <div class="flex items-center gap-6">
-                <div class="flex items-center gap-2">
-                    <span class="text-gray-500">Showing:</span>
-                    <span id="results-count" class="font-mono font-bold text-blue-500">0 results</span>
-                </div>
-            </div>
-            <div class="flex items-center gap-2">
-                <label class="text-gray-500">Order by:</label>
-                <select id="sort-order" class="bg-transparent border-none text-white font-bold focus:ring-0 cursor-pointer">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
+            <div class="flex items-center gap-4 bg-[#161618] px-4 py-2 rounded-xl border border-[#27272a]">
+                <span class="text-gray-500 text-sm">Sort:</span>
+                <select id="sort-order" class="bg-transparent text-sm font-bold focus:outline-none cursor-pointer">
                     <option value="0">Default</option>
                     <option value="6">Member Count</option>
                     <option value="1">Relevance</option>
                 </select>
             </div>
+            <div id="results-count" class="text-gray-500 text-sm font-medium">Ready for input</div>
         </div>
 
-        <div id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            <div id="empty-state" class="col-span-full py-20 text-center border-2 border-dashed border-[#1c1c1e] rounded-3xl">
-                <p class="text-gray-600 text-lg">Type something above to explore VK communities</p>
+        <div id="results-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div id="empty-state" class="col-span-full py-32 text-center opacity-40">
+                <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <p class="text-xl">Enter a keyword to begin searching</p>
             </div>
         </div>
     </div>
-  <script>
-    const APP_ID = 53969951; 
-    let accessToken = null;
 
-    // ... (Keep the rest of your UI variables)
+    <script>
+        const APP_ID = 53969951;
+        let accessToken = null;
 
-    async function search() {
-        const query = input.value.trim();
-        if (!query) return;
+        const input = document.getElementById('search-input');
+        const btn = document.getElementById('search-btn');
+        const grid = document.getElementById('results-grid');
+        const countDisplay = document.getElementById('results-count');
+        const loader = document.getElementById('loading-icon');
 
-        btn.disabled = true;
-        loader.classList.remove('hidden');
-        grid.style.opacity = '0.5';
+        async function init() {
+            try {
+                await vkBridge.send('VKWebAppInit');
+            } catch (e) { console.error("Init failed", e); }
+        }
 
-        try {
-            // Re-check token for every new session
-            if (!accessToken) {
-                const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
-                    app_id: APP_ID, 
-                    scope: 'groups' 
+        async function search() {
+            const query = input.value.trim();
+            if (!query) return;
+
+            // UI Feedback
+            btn.disabled = true;
+            loader.classList.remove('hidden');
+            grid.style.opacity = '0.4';
+
+            try {
+                // Get Token if we don't have one
+                if (!accessToken) {
+                    const auth = await vkBridge.send('VKWebAppGetAuthToken', { 
+                        app_id: APP_ID, 
+                        scope: 'groups' 
+                    });
+                    accessToken = auth.access_token;
+                }
+
+                // Call VK API
+                const response = await vkBridge.send('VKWebAppCallAPIMethod', {
+                    method: 'groups.search',
+                    params: {
+                        q: query,
+                        count: 48,
+                        extended: 1,
+                        sort: document.getElementById('sort-order').value,
+                        safe_searching: 0, // Age restriction OFF
+                        type: 'group,page,event',
+                        fields: 'members_count,activity,description,verified',
+                        v: '5.131',
+                        access_token: accessToken
+                    }
                 });
-                accessToken = auth.access_token;
+
+                // Standardize result extraction
+                const results = response.response?.items || response.items || [];
+                render(results);
+
+            } catch (err) {
+                console.error("API Error:", err);
+                const errorMsg = err.error_data?.error_msg || err.message || "Unknown Error";
+                alert("Search Error: " + errorMsg);
+            } finally {
+                btn.disabled = false;
+                loader.classList.add('hidden');
+                grid.style.opacity = '1';
+            }
+        }
+
+        function render(groups) {
+            countDisplay.innerText = `Found ${groups.length} communities`;
+            
+            if (groups.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-20 text-gray-500 italic">No results found for "${input.value}". Try a broader keyword.</div>`;
+                return;
             }
 
-            const response = await vkBridge.send('VKWebAppCallAPIMethod', {
-                method: 'groups.search',
-                params: {
-                    q: query,
-                    count: 50,
-                    extended: 1,
-                    sort: document.getElementById('sort-order').value,
-                    // REMOVE RESTRICTIONS
-                    safe_searching: 0, 
-                    type: 'group,page,event',
-                    fields: 'members_count,activity,verified,description,can_see_all_posts',
-                    v: '5.131',
-                    access_token: accessToken
-                }
-            });
+            grid.innerHTML = groups.map(g => {
+                const link = g.screen_name ? `https://vk.com/${g.screen_name}` : `https://vk.com/public${g.id}`;
+                return `
+                <div class="group-card rounded-3xl p-6 flex flex-col">
+                    <div class="flex items-center gap-4 mb-5">
+                        <img src="${g.photo_100}" class="w-14 h-14 rounded-2xl object-cover shadow-lg border border-white/5">
+                        <div class="min-w-0">
+                            <h3 class="font-bold text-white truncate text-sm flex items-center gap-1">
+                                ${g.name}
+                                ${g.verified ? '<svg class="w-4 h-4 text-blue-500 fill-current flex-shrink-0" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>' : ''}
+                            </h3>
+                            <span class="text-[10px] text-blue-500 font-black uppercase tracking-widest">${g.activity || 'Community'}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <span class="text-2xl font-black text-white leading-none">${(g.members_count || 0).toLocaleString()}</span>
+                        <span class="text-[10px] text-gray-500 uppercase font-bold ml-1 tracking-tighter">Followers</span>
+                    </div>
 
-            // VK API returns { response: { count: X, items: [...] } }
-            // or sometimes just the object depending on the bridge version
-            const results = response.items || response.response?.items || [];
-            
-            console.log("Search results:", results); // Check your browser console!
-            render(results);
+                    <p class="text-gray-400 text-xs line-clamp-2 mb-6 h-8 italic leading-relaxed">
+                        ${g.description ? g.description : 'No community description provided.'}
+                    </p>
 
-        } catch (err) {
-            console.error("Full Error Object:", err);
-            const msg = err.error_data?.error_msg || err.message || "Unknown Connection Error";
-            alert("VK API Error: " + msg);
-        } finally {
-            btn.disabled = false;
-            loader.classList.add('hidden');
-            grid.style.opacity = '1';
+                    <a href="${link}" target="_blank" 
+                        class="mt-auto block w-full bg-white/5 hover:bg-blue-600 text-white text-center text-xs font-bold py-4 rounded-2xl transition-all border border-white/5 hover:border-blue-500">
+                        Open Community
+                    </a>
+                </div>
+                `;
+            }).join('');
         }
-    }
-    
-    // ... (Keep your render function)
-</script>
+
+        // Listeners
+        btn.addEventListener('click', search);
+        input.addEventListener('keypress', (e) => { if (e.key === 'Enter') search(); });
+        document.getElementById('sort-order').addEventListener('change', () => { if(input.value) search(); });
+
+        init();
+    </script>
 </body>
 </html>
