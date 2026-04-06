@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VK Content Manager</title>
-    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
+    <!-- Try multiple CDN sources for reliability -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge@2.7.0/dist/browser.min.js" 
+            onerror="loadFallbackBridge()" 
+            crossorigin="anonymous"></script>
     <style>
         * {
             margin: 0;
@@ -22,6 +25,7 @@
             --accent-hover: #0066dd;
             --success-color: #34c759;
             --error-color: #ff3b30;
+            --warning-color: #ff9500;
             --border-color: #38383a;
             --card-radius: 12px;
         }
@@ -32,6 +36,7 @@
             color: var(--text-primary);
             line-height: 1.5;
             min-height: 100vh;
+            overflow-x: hidden;
         }
 
         .container {
@@ -60,6 +65,44 @@
         .header p {
             color: var(--text-secondary);
             font-size: 0.95rem;
+        }
+
+        /* Connection Status Banner */
+        .connection-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 0.9rem;
+            font-weight: 600;
+            z-index: 2000;
+            transform: translateY(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .connection-banner.show {
+            transform: translateY(0);
+        }
+
+        .connection-banner.offline {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .connection-banner.warning {
+            background: var(--warning-color);
+            color: black;
+        }
+
+        .connection-banner.success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .connection-banner + .container {
+            margin-top: 60px;
         }
 
         /* Stats Bar */
@@ -128,7 +171,9 @@
         .index-section {
             display: flex;
             justify-content: center;
+            gap: 15px;
             margin-bottom: 30px;
+            flex-wrap: wrap;
         }
 
         .index-btn {
@@ -142,8 +187,6 @@
             cursor: pointer;
             transition: all 0.3s ease;
             box-shadow: 0 4px 20px rgba(0, 119, 255, 0.4);
-            position: relative;
-            overflow: hidden;
         }
 
         .index-btn:hover:not(:disabled) {
@@ -154,6 +197,23 @@
         .index-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+
+        .demo-btn {
+            padding: 16px 40px;
+            background: var(--bg-tertiary);
+            border: 2px solid var(--border-color);
+            border-radius: 30px;
+            color: var(--text-primary);
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .demo-btn:hover {
+            border-color: var(--warning-color);
+            color: var(--warning-color);
         }
 
         /* Controls Section */
@@ -379,7 +439,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            background: rgba(0, 0, 0, 0.92);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -433,6 +493,24 @@
             transition: width 0.3s ease;
         }
 
+        .retry-btn {
+            margin-top: 25px;
+            padding: 12px 30px;
+            background: var(--accent-color);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .retry-btn:hover {
+            background: var(--accent-hover);
+            transform: scale(1.05);
+        }
+
         /* Error Section */
         .error-section {
             background: rgba(255, 59, 48, 0.1);
@@ -440,6 +518,10 @@
             border-radius: var(--card-radius);
             padding: 20px;
             margin-bottom: 20px;
+        }
+
+        .error-section.hidden {
+            display: none;
         }
 
         .error-header {
@@ -452,7 +534,7 @@
         .error-title {
             color: var(--error-color);
             font-weight: 600;
-            display: fex;
+            display: flex;
             align-items: center;
             gap: 8px;
         }
@@ -487,6 +569,8 @@
             color: var(--error-color);
             word-break: break-all;
             white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
         }
 
         /* Empty State */
@@ -494,6 +578,10 @@
             text-align: center;
             padding: 60px 20px;
             color: var(--text-secondary);
+        }
+
+        .empty-state.hidden {
+            display: none;
         }
 
         .empty-state-icon {
@@ -505,6 +593,48 @@
             font-size: 1.3rem;
             margin-bottom: 10px;
             color: var(--text-primary);
+        }
+
+        .empty-state p {
+            margin-bottom: 20px;
+        }
+
+        .empty-state button {
+            margin-top: 15px;
+        }
+
+        /* Network Status Indicator */
+        .network-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .network-status.online {
+            background: rgba(52, 199, 89, 0.2);
+            color: var(--success-color);
+        }
+
+        .network-status.offline {
+            background: rgba(255, 59, 48, 0.2);
+            color: var(--error-color);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         /* Scrollbar */
@@ -535,20 +665,62 @@
             animation: fadeIn 0.3s ease forwards;
         }
 
-        .hidden {
-            display: none !important;
+        /* Debug Info Panel */
+        .debug-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--card-radius);
+            padding: 15px;
+            max-width: 350px;
+            font-size: 0.8rem;
+            z-index: 999;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .debug-panel.hidden {
+            display: none;
+        }
+
+        .debug-panel h4 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .debug-item {
+            margin-bottom: 8px;
+            word-break: break-all;
+        }
+
+        .debug-label {
+            color: var(--text-secondary);
+        }
+
+        .debug-value {
+            color: var(--text-primary);
+            font-family: monospace;
         }
     </style>
 </head>
 <body>
+    <!-- Connection Status Banner -->
+    <div class="connection-banner" id="connectionBanner">
+        <span id="bannerText"></span>
+    </div>
+
     <!-- Loading Overlay -->
     <div class="loading-overlay hidden" id="loadingOverlay">
         <div class="spinner"></div>
-        <div class="progress-text" id="progressText">Indexing content...</div>
-        <div class="progress-detail" id="progressDetail">Preparing...</div>
+        <div class="progress-text" id="progressText">Initializing...</div>
+        <div class="progress-detail" id="progressDetail">Please wait</div>
         <div class="progress-bar-container">
             <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
         </div>
+        <button class="retry-btn hidden" id="retryBtn" onclick="retryOperation()">🔄 Retry</button>
     </div>
 
     <div class="container">
@@ -556,6 +728,13 @@
         <header class="header">
             <h1>📱 VK Content Manager</h1>
             <p>Index, filter, and manage your VK videos and posts</p>
+            <div style="margin-top: 15px;">
+                <span class="network-status online" id="networkStatus">
+                    <span class="status-dot"></span>
+                    <span id="networkStatusText">Online</span>
+                </span>
+                <span style="margin-left: 10px; color: var(--text-secondary); font-size: 0.85rem;" id="bridgeStatus"></span>
+            </div>
         </header>
 
         <!-- Stats Bar -->
@@ -580,6 +759,9 @@
         <div class="index-section">
             <button class="index-btn" id="indexBtn" onclick="startIndexing()">
                 🔄 Index Content
+            </button>
+            <button class="demo-btn" id="demoBtn" onclick="enableDemoMode()">
+                🎮 Load Demo Data
             </button>
         </div>
 
@@ -626,73 +808,241 @@
         <div class="empty-state hidden" id="emptyState">
             <div class="empty-state-icon">📭</div>
             <h3>No Content Found</h3>
-            <p>Click "Index Content" to load your VK data</p>
+            <p>Click "Index Content" to load your VK data, or try "Load Demo Data"</p>
         </div>
     </div>
 
+    <!-- Debug Panel (toggle with ?debug=1 in URL) -->
+    <div class="debug-panel hidden" id="debugPanel">
+        <h4>🔧 Debug Info</h4>
+        <div id="debugContent"></div>
+    </div>
+
     <script>
-        // Global State
-        let currentMode = 'video';
-        let allContent = [];
-        let filteredContent = [];
-        let accessToken = null;
-        let userId = null;
+        // ============================================
+        // GLOBAL STATE & CONFIGURATION
+        // ============================================
+        
+        const CONFIG = {
+            APP_ID: 53969951,
+            MAX_ITEMS: 1000,
+            BATCH_SIZE: 50,
+            STORAGE_KEY_PREFIX: 'vk_content_',
+            RETRY_DELAY: 2000,
+            MAX_RETRIES: 3,
+            TIMEOUT_MS: 10000
+        };
 
-        // Constants
-        const APP_ID = 53969951;
-        const MAX_ITEMS = 1000;
-        const BATCH_SIZE = 50;
-        const STORAGE_KEY_PREFIX = 'vk_content_';
+        let state = {
+            currentMode: 'video',
+            allContent: [],
+            filteredContent: [],
+            accessToken: null,
+            userId: null,
+            isOnline: navigator.onLine,
+            bridgeAvailable: false,
+            isDemoMode: false,
+            currentRetryCount: 0,
+            pendingOperation: null
+        };
 
-        // Initialize VK Bridge
-        async function initVKBridge() {
-            try {
-                await bridge.send('VKWebAppInit');
-                
-                // Get launch parameters
-                const launchParams = new URLSearchParams(window.location.search);
-                
-                // Request auth token
-                const authResult = await bridge.send('VKWebAppGetAuthToken', { 
-                    app_id: APP_ID,
-                    scope: 'video,wall,offline'
-                });
-                
-                if (authResult.access_token) {
-                    accessToken = authResult.access_token;
-                    
-                    // Try to get user info
-                    try {
-                        const userInfo = await bridge.send('VKWebAppGetUserInfo');
-                        if (userInfo && userInfo.id) {
-                            userId = userInfo.id;
-                        }
-                    } catch (e) {
-                        console.log('Could not get user info:', e);
-                    }
-                    
-                    console.log('VK Bridge initialized successfully');
-                    checkCachedData();
-                } else {
-                    throw new Error('No access token received');
-                }
-            } catch (error) {
-                console.error('VK Bridge initialization failed:', error);
-                showError('Bridge Init Failed', error.message + '\n\nMake sure you are running this inside VK app environment.');
-                
-                // Demo mode for testing outside VK
-                enableDemoMode();
+        // ============================================
+        // NETWORK DETECTION
+        // ============================================
+
+        function initNetworkDetection() {
+            window.addEventListener('online', () => handleNetworkChange(true));
+            window.addEventListener('offline', () => handleNetworkChange(false));
+            
+            updateNetworkStatus();
+            
+            // Periodic check every 30 seconds
+            setInterval(updateNetworkStatus, 30000);
+        }
+
+        function handleNetworkChange(isOnline) {
+            state.isOnline = isOnline;
+            updateNetworkStatus();
+            
+            if (isOnline) {
+                showBanner('Connection restored!', 'success');
+                setTimeout(hideBanner, 3000);
+            } else {
+                showBanner('You are offline. Some features may be limited.', 'offline');
             }
         }
 
-        // Demo mode for testing
-        function enableDemoMode() {
-            console.log('Running in demo mode');
-            accessToken = 'demo_token';
-            userId = 'demo_user';
+        function updateNetworkStatus() {
+            state.isOnline = navigator.onLine;
+            const statusEl = document.getElementById('networkStatus');
+            const statusTextEl = document.getElementById('networkStatusText');
             
-            // Generate demo data
-            generateDemoData();
+            statusEl.className = 'network-status ' + (state.isOnline ? 'online' : 'offline');
+            statusTextEl.textContent = state.isOnline ? 'Online' : 'Offline';
+        }
+
+        function showBanner(message, type) {
+            const banner = document.getElementById('connectionBanner');
+            const bannerText = document.getElementById('bannerText');
+            
+            banner.className = 'connection-banner show ' + type;
+            bannerText.textContent = message;
+        }
+
+        function hideBanner() {
+            document.getElementById('connectionBanner').classList.remove('show');
+        }
+
+        // ============================================
+        // VK BRIDGE INITIALIZATION (WITH FALLBACKS)
+        // ============================================
+
+        async function initVKBridge() {
+            logDebug('Initializing VK Bridge...');
+            updateProgress('Loading VK Bridge...', 'Checking connection', 10);
+            
+            // Check if bridge object exists
+            if (typeof bridge === 'undefined') {
+                logDebug('Bridge not loaded from CDN, checking alternatives...');
+                
+                // Try to load alternative sources
+                await tryAlternativeBridges();
+            }
+            
+            if (typeof bridge !== 'undefined' && bridge.send) {
+                try {
+                    logDebug('Bridge found, attempting initialization...');
+                    
+                    // Test if we're in VK environment
+                    const testResult = await Promise.race([
+                        bridge.send('VKWebAppInit'),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+                    ]);
+                    
+                    logDebug('Bridge initialized successfully');
+                    state.bridgeAvailable = true;
+                    document.getElementById('bridgeStatus').textContent = '✅ VK Bridge Connected';
+                    
+                    // Try to get auth token
+                    await requestAuthToken();
+                    
+                } catch (error) {
+                    logDebug(`Bridge init failed: ${error.message}`);
+                    handleBridgeFailure(error);
+                }
+            } else {
+                logDebug('No bridge available, enabling standalone mode');
+                handleBridgeFailure(new Error('VK Bridge SDK not available'));
+            }
+        }
+
+        async function tryAlternativeBridges() {
+            // Try loading from different CDNs
+            const cdnUrls = [
+                'https://cdn.jsdelivr.net/npm/@vkontakte/vk-bridge@2.7.0/dist/browser.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/vk-bridge/2.7.0/browser.min.js'
+            ];
+            
+            for (const url of cdnUrls) {
+                try {
+                    logDebug(`Trying to load bridge from: ${url}`);
+                    await loadScript(url);
+                    if (typeof bridge !== 'undefined') {
+                        logDebug('Bridge loaded successfully from alternative source');
+                        return true;
+                    }
+                } catch (e) {
+                    logDebug(`Failed to load from ${url}: ${e.message}`);
+                }
+            }
+            
+            return false;
+        }
+
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        }
+
+        async function requestAuthToken() {
+            try {
+                updateProgress('Requesting permissions...', 'Waiting for authorization', 30);
+                
+                const authResult = await Promise.race([
+                    bridge.send('VKWebAppGetAuthToken', { 
+                        app_id: CONFIG.APP_ID,
+                        scope: 'video,wall,offline'
+                    }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Auth timeout')), CONFIG.TIMEOUT_MS))
+                ]);
+                
+                if (authResult.access_token) {
+                    state.accessToken = authResult.access_token;
+                    logDebug('Access token received');
+                    
+                    // Get user info
+                    try {
+                        const userInfo = await bridge.send('VKWebAppGetUserInfo');
+                        if (userInfo && userInfo.id) {
+                            state.userId = userInfo.id;
+                            logDebug(`User ID: ${state.userId}`);
+                        }
+                    } catch (e) {
+                        logDebug('Could not get user info (non-critical)');
+                    }
+                    
+                    checkCachedData();
+                } else {
+                    throw new Error('No access token in response');
+                }
+                
+            } catch (error) {
+                logDebug(`Auth failed: ${error.message}`);
+                throw error;
+            }
+        }
+
+        function handleBridgeFailure(error) {
+            state.bridgeAvailable = false;
+            document.getElementById('bridgeStatus').innerHTML = '⚠️ Standalone Mode';
+            
+            showBanner(
+                'Running in offline/standalone mode. Click "Load Demo Data" to preview features.',
+                'warning'
+            );
+            
+            // Don't show scary errors, just enable demo mode option
+            console.warn('VK Bridge unavailable:', error.message);
+            
+            hideLoading();
+        }
+
+        // ============================================
+        // DEMO MODE
+        // ============================================
+
+        function enableDemoMode() {
+            logDebug('Enabling demo mode...');
+            showLoading(true);
+            updateProgress('Generating demo data...', 'Creating sample content', 20);
+            
+            setTimeout(() => {
+                generateDemoData();
+                state.isDemoMode = true;
+                
+                updateProgress('Complete!', 'Demo data ready', 100);
+                
+                setTimeout(() => {
+                    hideLoading();
+                    showBanner('Demo mode active - Sample data loaded', 'success');
+                    setTimeout(hideBanner, 4000);
+                }, 500);
+            }, 500);
         }
 
         function generateDemoData() {
@@ -700,18 +1050,47 @@
             const postDemo = [];
             
             const resolutions = ['4K', '1080p', '720p', '480p', '360p'];
-            const durations = ['2:34', '5:45', '12:30', '25:00', '8:15', '18:22', '3:45', '35:10'];
+            const durations = [
+                { label: '2:34', seconds: 154 },
+                { label: '5:45', seconds: 345 },
+                { label: '12:30', seconds: 750 },
+                { label: '25:00', seconds: 1500 },
+                { label: '8:15', seconds: 495 },
+                { label: '18:22', seconds: 1102 },
+                { label: '3:45', seconds: 225 },
+                { label: '35:10', seconds: 2110 }
+            ];
             const postTypes = ['text', 'photo', 'video', 'link', 'audio', 'document'];
+            const videoTitles = [
+                'Amazing Tutorial Series Part 1',
+                'Vlog: My Day in the City',
+                'Product Review: Latest Tech Gadgets',
+                'Music Video Cover Performance',
+                'Gaming Livestream Highlights',
+                'Cooking Show: Easy Recipes',
+                'Travel Vlog: Paris Adventure',
+                'Tech News Weekly Update'
+            ];
+            const postTexts = [
+                'Just had an amazing day! The weather was perfect and I got so much done. Really feeling productive today! 🌟',
+                'New project announcement coming soon! Stay tuned for something exciting. We have been working hard behind the scenes.',
+                'Thought of the day: Every expert was once a beginner. Keep learning and growing! 💪',
+                'Quick tip: Take regular breaks when working. Your productivity will actually increase! #ProductivityHacks',
+                'Sharing some insights from my recent experience. Let me know what you think in the comments below 👇'
+            ];
             
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 48; i++) {
+                const dur = durations[i % durations.length];
+                const daysAgo = Math.floor(Math.random() * 365);
+                
                 // Video demos
                 videoDemo.push({
-                    id: `video_${i}`,
-                    title: `Sample Video ${i + 1} - ${['Tutorial', 'Vlog', 'Review', 'Music', 'Gaming'][i % 5]} Content`,
-                    duration: durations[i % durations.length],
-                    durationSeconds: [154, 345, 750, 1500, 495, 1102, 225, 2110][i % 8],
+                    id: `video_demo_${i}`,
+                    title: `${videoTitles[i % videoTitles.length]} ${i > 7 ? '#' + (i - 7) : ''}`,
+                    duration: dur.label,
+                    durationSeconds: dur.seconds,
                     views: Math.floor(Math.random() * 50000) + 100,
-                    date: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+                    date: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
                     resolution: resolutions[i % resolutions.length],
                     thumbnail: null,
                     type: 'video'
@@ -719,64 +1098,265 @@
                 
                 // Post demos
                 postDemo.push({
-                    id: `post_${i}`,
-                    text: `This is sample post ${i + 1}. ${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(i % 5 + 1)}`,
+                    id: `post_demo_${i}`,
+                    text: `${postTexts[i % postTexts.length]} ${i > 4 ? '(Post #' + (i - 4) + ')' : ''}`,
                     likes: Math.floor(Math.random() * 1000),
                     comments: Math.floor(Math.random() * 200),
                     reposts: Math.floor(Math.random() * 100),
-                    date: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000).toISOString(),
+                    date: new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
                     contentType: postTypes[i % postTypes.length],
                     type: 'post'
                 });
             }
             
-            localStorage.setItem(STORAGE_KEY_PREFIX + 'video', JSON.stringify({
-                data: videoDemo,
-                timestamp: Date.now()
-            }));
+            // Save to localStorage
+            saveToStorage('video', videoDemo);
+            saveToStorage('post', postDemo);
             
-            localStorage.setItem(STORAGE_KEY_PREFIX + 'post', JSON.stringify({
-                data: postDemo,
-                timestamp: Date.now()
-            }));
+            // Load current mode's data
+            state.allContent = currentModeData();
+            updateStats(Date.now());
+            applyFilters();
             
-            checkCachedData();
+            logDebug(`Generated ${videoDemo.length} videos and ${postDemo.length} posts`);
         }
 
-        // Check cached data
+        // ============================================
+        // DATA FETCHING WITH RETRY LOGIC
+        // ============================================
+
+        async function startIndexing() {
+            if (!state.isOnline && !state.isDemoMode) {
+                showError('Offline', 'You appear to be offline. Please check your internet connection and try again.\n\nTip: You can use "Load Demo Data" to preview the app.');
+                return;
+            }
+            
+            if (!state.bridgeAvailable && !state.isDemoMode) {
+                showBanner('VK Bridge not available. Using simulated data.', 'warning');
+                setTimeout(() => {
+                    enableDemoMode();
+                }, 1500);
+                return;
+            }
+            
+            showLoading(true);
+            hideError();
+            state.currentRetryCount = 0;
+            state.pendingOperation = 'index';
+            
+            await performIndexing();
+        }
+
+        async function performIndexing() {
+            try {
+                let fetchedContent = [];
+                let offset = 0;
+                let hasMore = true;
+                let batchNum = 0;
+                
+                while (hasMore && fetchedContent.length < CONFIG.MAX_ITEMS) {
+                    batchNum++;
+                    updateProgress(
+                        `Fetching batch ${batchNum}...`,
+                        `${fetchedContent.length} items collected`,
+                        Math.min((fetchedContent.length / CONFIG.MAX_ITEMS) * 90, 90)
+                    );
+                    
+                    let result;
+                    if (state.currentMode === 'video') {
+                        result = await fetchWithRetry(() => fetchVideos(offset, CONFIG.BATCH_SIZE));
+                    } else {
+                        result = await fetchWithRetry(() => fetchPosts(offset, CONFIG.BATCH_SIZE));
+                    }
+                    
+                    if (result && result.items && result.items.length > 0) {
+                        fetchedContent = fetchedContent.concat(result.items);
+                        offset += CONFIG.BATCH_SIZE;
+                        
+                        if (result.items.length < CONFIG.BATCH_SIZE) {
+                            hasMore = false;
+                        }
+                    } else {
+                        hasMore = false;
+                    }
+                    
+                    // Small delay to avoid rate limiting
+                    await sleep(100);
+                }
+                
+                // Cache results
+                state.allContent = fetchedContent;
+                saveToStorage(state.currentMode, fetchedContent);
+                
+                updateProgress('✅ Complete!', `${fetchedContent.length} items indexed`, 100);
+                
+                setTimeout(() => {
+                    hideLoading();
+                    updateStats(Date.now());
+                    applyFilters();
+                    showBanner(`Successfully indexed ${fetchedContent.length} items!`, 'success');
+                    setTimeout(hideBanner, 3000);
+                }, 800);
+                
+            } catch (error) {
+                logError('Indexing failed:', error);
+                hideLoading();
+                showError('Indexing Failed', formatErrorMessage(error));
+            }
+        }
+
+        async function fetchWithRetry(fetchFn, retries = CONFIG.MAX_RETRIES) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    return await fetchFn();
+                } catch (error) {
+                    logDebug(`Attempt ${i + 1} failed: ${error.message}`);
+                    
+                    if (i === retries - 1) throw error;
+                    
+                    updateProgress(
+                        `Retrying... (${i + 1}/${retries})`,
+                        error.message,
+                        null
+                    );
+                    
+                    await sleep(CONFIG.RETRY_DELAY * (i + 1));
+                }
+            }
+        }
+
+        async function fetchVideos(offset, count) {
+            if (!state.bridgeAvailable || state.isDemoMode) {
+                // Return cached/simulated data
+                const data = currentModeData();
+                return { items: data.slice(offset, offset + count) };
+            }
+            
+            const result = await bridge.send('VKWebAppCallAPIMethod', {
+                method: 'fave.get',
+                params: {
+                    access_token: state.accessToken,
+                    item_type: 'video',
+                    offset: offset,
+                    count: count,
+                    v: '5.131'
+                }
+            });
+            
+            if (result.response) {
+                return {
+                    items: result.response.items.map(video => ({
+                        id: video.id,
+                        title: video.title || 'Untitled Video',
+                        duration: formatDuration(video.duration),
+                        durationSeconds: video.duration || 0,
+                        views: video.views || 0,
+                        date: new Date((video.date || 0) * 1000).toISOString(),
+                        resolution: getResolution(video.width, video.height),
+                        thumbnail: video.photo_800 || video.photo_320 || null,
+                        type: 'video'
+                    }))
+                };
+            }
+            
+            throw new Error(result.error?.error_msg || 'Failed to fetch videos');
+        }
+
+        async function fetchPosts(offset, count) {
+            if (!state.bridgeAvailable || state.isDemoMode) {
+                const data = currentModeData();
+                return { items: data.slice(offset, offset + count) };
+            }
+            
+            const result = await bridge.send('VKWebAppCallAPIMethod', {
+                method: 'newsfeed.get',
+                params: {
+                    access_token: state.accessToken,
+                    filters: 'post',
+                    offset: offset,
+                    count: count,
+                    v: '5.131'
+                }
+            });
+            
+            if (result.response) {
+                return {
+                    items: result.response.items.map(post => ({
+                        id: post.id,
+                        text: post.text || '',
+                        likes: post.likes?.count || 0,
+                        comments: post.comments?.count || 0,
+                        reposts: post.reposts?.count || 0,
+                        date: new Date((post.date || 0) * 1000).toISOString(),
+                        contentType: getPostContentType(post),
+                        type: 'post'
+                    }))
+                };
+            }
+            
+            throw new Error(result.error?.error_msg || 'Failed to fetch posts');
+        }
+
+        // ============================================
+        // STORAGE HELPERS
+        // ============================================
+
+        function saveToStorage(mode, data) {
+            try {
+                localStorage.setItem(CONFIG.STORAGE_KEY_PREFIX + mode, JSON.stringify({
+                    data: data,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                logError('Storage save failed:', e);
+            }
+        }
+
+        function loadFromStorage(mode) {
+            try {
+                const stored = localStorage.getItem(CONFIG.STORAGE_KEY_PREFIX + mode);
+                return stored ? JSON.parse(stored) : null;
+            } catch (e) {
+                logError('Storage load failed:', e);
+                return null;
+            }
+        }
+
+        function currentModeData() {
+            const cached = loadFromStorage(state.currentMode);
+            return cached?.data || [];
+        }
+
         function checkCachedData() {
-            const cached = localStorage.getItem(STORAGE_KEY_PREFIX + currentMode);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                allContent = parsed.data || [];
-                updateStats(parsed.timestamp);
+            const cached = loadFromStorage(state.currentMode);
+            if (cached && cached.data) {
+                state.allContent = cached.data;
+                updateStats(cached.timestamp);
                 applyFilters();
             }
         }
 
-        // Switch between video/post mode
+        // ============================================
+        // UI FUNCTIONS
+        // ============================================
+
         function switchMode(mode) {
-            currentMode = mode;
+            state.currentMode = mode;
             
-            // Update UI
             document.querySelectorAll('.mode-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
             });
             
-            // Update filters based on mode
             updateFilterOptions();
-            
-            // Load cached data for this mode
             checkCachedData();
         }
 
-        // Update filter dropdowns and chips based on mode
         function updateFilterOptions() {
             const typeFilter = document.getElementById('typeFilter');
             const sortDropdown = document.getElementById('sortDropdown');
             const chipsContainer = document.getElementById('chipsContainer');
             
-            if (currentMode === 'video') {
+            if (state.currentMode === 'video') {
                 typeFilter.innerHTML = `
                     <option value="">All Resolutions</option>
                     <option value="4K">4K Ultra HD</option>
@@ -828,223 +1408,24 @@
             }
         }
 
-        // Start indexing process
-        async function startIndexing() {
-            showLoading(true);
-            hideError();
-            
-            try {
-                let fetchedContent = [];
-                let offset = 0;
-                let hasMore = true;
-                
-                while (hasMore && fetchedContent.length < MAX_ITEMS) {
-                    updateProgress(
-                        `Fetching batch ${Math.floor(offset / BATCH_SIZE) + 1}...`,
-                        `${fetchedContent.length} items loaded`
-                    );
-                    
-                    let result;
-                    if (currentMode === 'video') {
-                        result = await fetchVideos(offset, BATCH_SIZE);
-                    } else {
-                        result = await fetchPosts(offset, BATCH_SIZE);
-                    }
-                    
-                    if (result.items && result.items.length > 0) {
-                        fetchedContent = fetchedContent.concat(result.items);
-                        offset += BATCH_SIZE;
-                        
-                        // Check if we got fewer items than requested
-                        if (result.items.length < BATCH_SIZE) {
-                            hasMore = false;
-                        }
-                    } else {
-                        hasMore = false;
-                    }
-                    
-                    // Small delay to avoid rate limiting
-                    await sleep(100);
-                    
-                    updateProgress(
-                        `Processing...`,
-                        `${fetchedContent.length} items collected`,
-                        Math.min((fetchedContent.length / MAX_ITEMS) * 100, 99)
-                    );
-                }
-                
-                // Cache the results
-                allContent = fetchedContent;
-                localStorage.setItem(STORAGE_KEY_PREFIX + currentMode, JSON.stringify({
-                    data: allContent,
-                    timestamp: Date.now()
-                }));
-                
-                updateProgress('Complete!', `${allContent.length} items indexed`, 100);
-                
-                setTimeout(() => {
-                    showLoading(false);
-                    updateStats(Date.now());
-                    applyFilters();
-                }, 500);
-                
-            } catch (error) {
-                showLoading(false);
-                showError('Indexing Failed', error.message || JSON.stringify(error));
-            }
-        }
-
-        // Fetch videos using VK API
-        async function fetchVideos(offset, count) {
-            try {
-                const result = await bridge.send('VKWebAppCallAPIMethod', {
-                    method: 'fave.get',
-                    params: {
-                        access_token: accessToken,
-                        item_type: 'video',
-                        offset: offset,
-                        count: count,
-                        v: '5.131'
-                    }
-                });
-                
-                if (result.response) {
-                    return {
-                        items: result.response.items.map(video => ({
-                            id: video.id,
-                            title: video.title || 'Untitled Video',
-                            duration: formatDuration(video.duration),
-                            durationSeconds: video.duration || 0,
-                            views: video.views || 0,
-                            date: new Date((video.date || 0) * 1000).toISOString(),
-                            resolution: getResolution(video.width, video.height),
-                            thumbnail: video.photo_800 || video.photo_320 || null,
-                            type: 'video'
-                        }))
-                    };
-                }
-                
-                throw new Error(result.error?.error_msg || 'Failed to fetch videos');
-            } catch (error) {
-                // If API fails, use demo data
-                if (accessToken === 'demo_token') {
-                    const demoData = JSON.parse(localStorage.getItem(STORAGE_KEY_PREFIX + 'video'));
-                    return {
-                        items: (demoData?.data || []).slice(offset, offset + count)
-                    };
-                }
-                throw error;
-            }
-        }
-
-        // Fetch posts using VK API
-        async function fetchPosts(offset, count) {
-            try {
-                const result = await bridge.send('VKWebAppCallAPIMethod', {
-                    method: 'newsfeed.get',
-                    params: {
-                        access_token: accessToken,
-                        filters: 'post',
-                        offset: offset,
-                        count: count,
-                        v: '5.131'
-                    }
-                });
-                
-                if (result.response) {
-                    return {
-                        items: result.response.items.map(post => ({
-                            id: post.id,
-                            text: post.text || '',
-                            likes: post.likes?.count || 0,
-                            comments: post.comments?.count || 0,
-                            reposts: post.reposts?.count || 0,
-                            date: new Date((post.date || 0) * 1000).toISOString(),
-                            contentType: getPostContentType(post),
-                            type: 'post'
-                        }))
-                    };
-                }
-                
-                throw new Error(result.error?.error_msg || 'Failed to fetch posts');
-            } catch (error) {
-                // If API fails, use demo data
-                if (accessToken === 'demo_token') {
-                    const demoData = JSON.parse(localStorage.getItem(STORAGE_KEY_PREFIX + 'post'));
-                    return {
-                        items: (demoData?.data || []).slice(offset, offset + count)
-                    };
-                }
-                throw error;
-            }
-        }
-
-        // Helper functions
-        function formatDuration(seconds) {
-            if (!seconds) return '0:00';
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = seconds % 60;
-            
-            if (h > 0) {
-                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            }
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        }
-
-        function getResolution(width, height) {
-            if (!width || !height) return 'Unknown';
-            const min = Math.min(width, height);
-            
-            if (min >= 2160) return '4K';
-            if (min >= 1080) return '1080p';
-            if (min >= 720) return '720p';
-            if (min >= 480) return '480p';
-            if (min >= 360) return '360p';
-            return 'SD';
-        }
-
-        function getPostContentType(post) {
-            if (post.attachments && post.attachments.length > 0) {
-                return post.attachments[0].type || 'text';
-            }
-            return post.text ? 'text' : 'unknown';
-        }
-
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-
-        // Apply filters and search
         function applyFilters() {
             const searchTerm = document.getElementById('searchBar').value.toLowerCase();
             const typeValue = document.getElementById('typeFilter').value;
             const sortValue = document.getElementById('sortDropdown').value;
-            
-            // Get active chips
             const activeChips = Array.from(document.querySelectorAll('.chip.active'))
                 .map(chip => ({ filter: chip.dataset.filter, value: chip.dataset.value }));
             
-            // Filter content
-            filteredContent = allContent.filter(item => {
+            state.filteredContent = state.allContent.filter(item => {
                 // Search filter
                 if (searchTerm) {
-                    const searchableText = currentMode === 'video' 
-                        ? item.title 
-                        : item.text;
-                    if (!searchableText.toLowerCase().includes(searchTerm)) {
-                        return false;
-                    }
+                    const searchableText = state.currentMode === 'video' ? item.title : item.text;
+                    if (!searchableText.toLowerCase().includes(searchTerm)) return false;
                 }
                 
-                // Type/Resolution filter
+                // Type filter
                 if (typeValue) {
-                    if (currentMode === 'video' && item.resolution !== typeValue) {
-                        return false;
-                    }
-                    if (currentMode === 'post' && item.contentType !== typeValue) {
-                        return false;
-                    }
+                    if (state.currentMode === 'video' && item.resolution !== typeValue) return false;
+                    if (state.currentMode === 'post' && item.contentType !== typeValue) return false;
                 }
                 
                 // Chip filters
@@ -1068,62 +1449,55 @@
                 return true;
             });
             
-            // Sort content
             sortContent(sortValue);
-            
-            // Render
             renderContent();
         }
 
         function sortContent(sortValue) {
             switch (sortValue) {
                 case 'newest':
-                    filteredContent.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    state.filteredContent.sort((a, b) => new Date(b.date) - new Date(a.date));
                     break;
                 case 'oldest':
-                    filteredContent.sort((a, b) => new Date(a.date) - new Date(b.date));
+                    state.filteredContent.sort((a, b) => new Date(a.date) - new Date(b.date));
                     break;
                 case 'most-engaged':
-                    if (currentMode === 'video') {
-                        filteredContent.sort((a, b) => b.views - a.views);
-                    } else {
-                        filteredContent.sort((a, b) => b.likes - a.likes);
-                    }
+                    state.filteredContent.sort((a, b) => 
+                        (state.currentMode === 'video' ? b.views : b.likes) - 
+                        (state.currentMode === 'video' ? a.views : a.likes)
+                    );
                     break;
                 case 'least-engaged':
-                    if (currentMode === 'video') {
-                        filteredContent.sort((a, b) => a.views - b.views);
-                    } else {
-                        filteredContent.sort((a, b) => a.likes - b.likes);
-                    }
+                    state.filteredContent.sort((a, b) => 
+                        (state.currentMode === 'video' ? a.views : a.likes) - 
+                        (state.currentMode === 'video' ? b.views : b.likes)
+                    );
                     break;
                 case 'duration-long':
-                    filteredContent.sort((a, b) => (b.durationSeconds || 0) - (a.durationSeconds || 0));
+                    state.filteredContent.sort((a, b) => (b.durationSeconds || 0) - (a.durationSeconds || 0));
                     break;
                 case 'duration-short':
-                    filteredContent.sort((a, b) => (a.durationSeconds || 0) - (b.durationSeconds || 0));
+                    state.filteredContent.sort((a, b) => (a.durationSeconds || 0) - (b.durationSeconds || 0));
                     break;
                 case 'most-comments':
-                    filteredContent.sort((a, b) => (b.comments || 0) - (a.comments || 0));
+                    state.filteredContent.sort((a, b) => (b.comments || 0) - (a.comments || 0));
                     break;
                 case 'least-comments':
-                    filteredContent.sort((a, b) => (a.comments || 0) - (b.comments || 0));
+                    state.filteredContent.sort((a, b) => (a.comments || 0) - (b.comments || 0));
                     break;
             }
         }
 
-        // Toggle chip selection
         function toggleChip(chip) {
             chip.classList.toggle('active');
             applyFilters();
         }
 
-        // Render content cards
         function renderContent() {
             const grid = document.getElementById('contentGrid');
             const emptyState = document.getElementById('emptyState');
             
-            if (filteredContent.length === 0) {
+            if (state.filteredContent.length === 0) {
                 grid.innerHTML = '';
                 emptyState.classList.remove('hidden');
                 return;
@@ -1131,18 +1505,14 @@
             
             emptyState.classList.add('hidden');
             
-            grid.innerHTML = filteredContent.map(item => {
-                if (currentMode === 'video') {
-                    return createVideoCard(item);
-                } else {
-                    return createPostCard(item);
-                }
+            grid.innerHTML = state.filteredContent.map(item => {
+                return state.currentMode === 'video' ? createVideoCard(item) : createPostCard(item);
             }).join('');
         }
 
         function createVideoCard(item) {
             const thumbnailHtml = item.thumbnail 
-                ? `<img src="${item.thumbnail}" alt="${item.title}" onerror="this.parentElement.innerHTML='🎬'">` 
+                ? `<img src="${item.thumbnail}" alt="${escapeHtml(item.title)}" onerror="this.parentElement.innerHTML='🎬'" loading="lazy">` 
                 : '🎬';
             
             return `
@@ -1164,14 +1534,7 @@
         }
 
         function createPostCard(item) {
-            const iconMap = {
-                text: '📝',
-                photo: '🖼️',
-                video: '🎬',
-                link: '🔗',
-                audio: '🎵',
-                document: '📄'
-            };
+            const iconMap = { text: '📝', photo: '🖼️', video: '🎬', link: '🔗', audio: '🎵', document: '📄' };
             
             return `
                 <div class="content-card">
@@ -1191,6 +1554,35 @@
                     </div>
                 </div>
             `;
+        }
+
+        // ============================================
+        // HELPER FUNCTIONS
+        // ============================================
+
+        function formatDuration(seconds) {
+            if (!seconds) return '0:00';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}` 
+                         : `${m}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function getResolution(width, height) {
+            if (!width || !height) return 'Unknown';
+            const min = Math.min(width, height);
+            if (min >= 2160) return '4K';
+            if (min >= 1080) return '1080p';
+            if (min >= 720) return '720p';
+            if (min >= 480) return '480p';
+            if (min >= 360) return '360p';
+            return 'SD';
+        }
+
+        function getPostContentType(post) {
+            if (post.attachments?.length > 0) return post.attachments[0].type || 'text';
+            return post.text ? 'text' : 'unknown';
         }
 
         function getDurationCategory(seconds) {
@@ -1214,46 +1606,75 @@
             return div.innerHTML;
         }
 
-        // Update stats display
-        function updateStats(timestamp) {
-            document.getElementById('totalCount').textContent = allContent.length;
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function formatErrorMessage(error) {
+            const parts = [
+                'Error Details:',
+                '',
+                `Message: ${error.message || 'Unknown error'}`,
+                `Time: ${new Date().toISOString()}`,
+                `Online: ${navigator.onLine}`,
+                `Bridge Available: ${state.bridgeAvailable}`,
+                `Demo Mode: ${state.isDemoMode}`
+            ];
             
+            if (error.stack) {
+                parts.push('', 'Stack Trace:', error.stack.substring(0, 500));
+            }
+            
+            return parts.join('\n');
+        }
+
+        // ============================================
+        // UI CONTROLS
+        // ============================================
+
+        function updateStats(timestamp) {
+            document.getElementById('totalCount').textContent = state.allContent.length;
             if (timestamp) {
-                const date = new Date(timestamp);
-                document.getElementById('lastUpdated').textContent = date.toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                });
+                document.getElementById('lastUpdated').textContent = 
+                    new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             }
         }
 
-        // Loading overlay controls
         function showLoading(show) {
             const overlay = document.getElementById('loadingOverlay');
             const btn = document.getElementById('indexBtn');
+            const retryBtn = document.getElementById('retryBtn');
             
             if (show) {
                 overlay.classList.remove('hidden');
                 btn.disabled = true;
+                retryBtn.classList.add('hidden');
             } else {
                 overlay.classList.add('hidden');
                 btn.disabled = false;
             }
         }
 
-        function updateProgress(text, detail, percent = 0) {
+        function updateProgress(text, detail, percent) {
             document.getElementById('progressText').textContent = text;
             document.getElementById('progressDetail').textContent = detail;
-            document.getElementById('progressBar').style.width = percent + '%';
+            if (percent !== null && percent !== undefined) {
+                document.getElementById('progressBar').style.width = percent + '%';
+            }
         }
 
-        // Error handling
         function showError(title, details) {
             const section = document.getElementById('errorSection');
             const content = document.getElementById('errorContent');
             
             section.classList.remove('hidden');
-            content.textContent = `${title}\n\n${details}`;
+            content.textContent = details;
+            
+            // Also show retry button in loading overlay if visible
+            const overlay = document.getElementById('loadingOverlay');
+            if (!overlay.classList.contains('hidden')) {
+                document.getElementById('retryBtn').classList.remove('hidden');
+            }
         }
 
         function hideError() {
@@ -1263,15 +1684,104 @@
         function toggleErrorDetails() {
             const details = document.getElementById('errorDetails');
             const toggle = document.getElementById('errorToggle');
-            
             details.classList.toggle('expanded');
             toggle.classList.toggle('expanded');
         }
 
-        // Initialize app
+        function retryOperation() {
+            if (state.pendingOperation === 'index') {
+                startIndexing();
+            }
+        }
+
+        // ============================================
+        // DEBUG UTILITIES
+        // ============================================
+
+        function logDebug(message) {
+            console.log(`[VK App] ${message}`);
+            updateDebugPanel();
+        }
+
+        function logError(message, error) {
+            console.error(`[VK App] ${message}`, error);
+            updateDebugPanel();
+        }
+
+        function updateDebugPanel() {
+            if (window.location.search.includes('debug=1')) {
+                const panel = document.getElementById('debugPanel');
+                const content = document.getElementById('debugContent');
+                
+                panel.classList.remove('hidden');
+                content.innerHTML = `
+                    <div class="debug-item">
+                        <span class="debug-label">Online:</span>
+                        <span class="debug-value">${state.isOnline}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Bridge:</span>
+                        <span class="debug-value">${state.bridgeAvailable}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Demo Mode:</span>
+                        <span class="debug-value">${state.isDemoMode}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Token:</span>
+                        <span class="debug-value">${state.accessToken ? '✓ Set' : '✗ Not set'}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">User ID:</span>
+                        <span class="debug-value">${state.userId || 'N/A'}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Items Loaded:</span>
+                        <span class="debug-value">${state.allContent.length}</span>
+                    </div>
+                    <div class="debug-item">
+                        <span class="debug-label">Current Mode:</span>
+                        <span class="debug-value">${state.currentMode}</span>
+                    </div>
+                `;
+            }
+        }
+
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+
         document.addEventListener('DOMContentLoaded', () => {
-            initVKBridge();
+            logDebug('App initializing...');
+            
+            // Initialize network detection first
+            initNetworkDetection();
+            
+            // Initialize UI
             updateFilterOptions();
+            
+            // Try to initialize VK Bridge (with timeout protection)
+            Promise.race([
+                initVKBridge(),
+                new Promise(resolve => setTimeout(resolve, 8000))
+            ]).then(() => {
+                logDebug('Initialization complete');
+                hideLoading();
+                updateDebugPanel();
+            }).catch(error => {
+                logError('Init error:', error);
+                hideLoading();
+            });
+        });
+
+        // Global error handler
+        window.addEventListener('error', (event) => {
+            logError('Global error:', event.error);
+        });
+
+        // Handle unhandled promise rejections
+        window.addEventListener('unhandledrejection', (event) => {
+            logError('Unhandled rejection:', event.reason);
         });
     </script>
 </body>
