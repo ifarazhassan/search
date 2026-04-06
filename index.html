@@ -337,7 +337,7 @@
             <div class="empty-state">
                 <div class="empty-icon">📂</div>
                 <h3>No Content Indexed</h3>
-                <p>Click "Index Content" to fetch data from VK (or simulate it).</p>
+                <p>Click "Index Content" to fetch data from VK.</p>
             </div>
         </div>
     </main>
@@ -543,16 +543,15 @@
 
                     // Check if we are inside VK environment
                     if (window.vkBridge) {
-                        // 1. Auth
+                        // 1. Auth with specific App ID and Scope
                         this.els.progText.textContent = "Requesting Access Token...";
                         const authData = await window.vkBridge.send('VKWebAppGetAuthToken', { 
-                            app_id: 53969951 // Standard web app ID or from launch params
+                            app_id: 53969951, // User's App ID
+                            scope: 'video,wall,offline' // Necessary permissions for reading video and posts
                         });
                         
                         // 2. Loop Fetch
                         const method = this.mode === 'video' ? 'fave.get' : 'newsfeed.get'; 
-                        // Note: 'wall.get' is often better for posts but requires user_id. newsfeed.get is generic.
-                        const itemType = this.mode === 'video' ? 'video' : 'post';
                         
                         let offset = 0;
                         let count = 20;
@@ -572,7 +571,7 @@
                             };
                             
                             if(this.mode === 'video') params.item_type = 'video';
-                            if(this.mode === 'post') params.filters = 'post'; // wall.get might be better in real scenario
+                            if(this.mode === 'post') params.filters = 'post'; 
 
                             // Simulate network delay slightly for UI smoothness
                             await new Promise(r => setTimeout(r, 100)); 
@@ -609,7 +608,7 @@
                         this.els.progFill.style.width = "30%";
 
                         const batchSize = 50;
-                        const totalMock = 150; // Generate 150 items
+                        const totalMock = 150; 
                         const loops = totalMock / batchSize;
 
                         for(let i=0; i<loops; i++) {
@@ -649,11 +648,8 @@
             }
 
             parseAPIItems(items) {
-                // Map raw VK API objects to our internal format
                 return items.map(item => {
                     if (this.mode === 'video') {
-                        // fave.get returns video objects inside 'video' prop or directly depending on version
-                        // Simplifying for structure
                         const v = item.video || item; 
                         return {
                             id: v.id,
@@ -667,7 +663,6 @@
                             image: v.photo_800 || v.photo_320 || `https://picsum.photos/seed/${v.id}/400/225`
                         };
                     } else {
-                        // Post parsing
                         const attachmentType = item.attachments && item.attachments.length > 0 
                             ? item.attachments[0].type 
                             : (item.text ? 'text' : 'post');
@@ -699,7 +694,6 @@
                     // Dropdown Filter
                     if (this.filters.main !== 'all') {
                         if (this.mode === 'video') {
-                            // Resolution logic derived from width/height
                             const w = item.width;
                             let res = 'SD';
                             if (w >= 3840) res = '4K';
