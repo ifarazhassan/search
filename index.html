@@ -3,115 +3,866 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VK Community Search</title>
+    <title>VK Content Indexer</title>
+    <!-- Load VK Bridge -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    
     <style>
-        body { background-color: #000; color: #fff; font-family: sans-serif; }
-        .card { background: #111; border: 1px solid #222; transition: 0.2s; }
-        .card:hover { border-color: #3b82f6; transform: translateY(-2px); }
+        :root {
+            --bg-color: #000000;
+            --card-bg: #1c1c1e;
+            --text-main: #ffffff;
+            --text-secondary: #8e8e93;
+            --accent: #007AFF;
+            --accent-hover: #0056b3;
+            --border: #333333;
+            --danger: #ff453a;
+            --success: #30d158;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * { box-sizing: border-box; outline: none; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Layout --- */
+        header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(28, 28, 30, 0.8);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        .badge { font-size: 0.7rem; background: var(--border); padding: 2px 6px; border-radius: 4px; color: var(--text-secondary); }
+
+        .stats { font-size: 0.85rem; color: var(--text-secondary); text-align: right; }
+        .stats span { color: var(--text-main); font-weight: 600; }
+
+        main { flex: 1; padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+        /* --- Controls --- */
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+        }
+        .btn:hover { background: var(--accent-hover); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: var(--card-bg); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: #2c2c2e; }
+        .btn-secondary.active { border-color: var(--accent); color: var(--accent); }
+
+        .search-wrapper { flex: 1; position: relative; min-width: 250px; }
+        .search-input {
+            width: 100%;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 10px 16px 10px 40px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+        }
+        .search-input:focus { border-color: var(--accent); }
+        .search-icon {
+            position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+            width: 16px; height: 16px; fill: var(--text-secondary);
+        }
+
+        select {
+            background: var(--card-bg);
+            color: white;
+            border: 1px solid var(--border);
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        /* --- Filters --- */
+        .filters-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .filter-group { display: flex; align-items: center; gap: 8px; }
+
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: 0.2s;
+            user-select: none;
+        }
+        .chip:hover { background: #2c2c2e; }
+        .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        /* --- Grid --- */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        @media (min-width: 768px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1024px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s;
+            position: relative;
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+
+        .card-thumb {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            background: #000;
+        }
+        
+        .card-body { padding: 12px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+        
+        .card-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            color: var(--text-main);
+            margin: 0;
+        }
+
+        .card-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: auto;
+        }
+
+        .tag {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        .tag.hd { color: var(--success); background: rgba(48, 209, 88, 0.15); }
+        .tag.4k { color: #bf5af2; background: rgba(191, 90, 242, 0.15); }
+        .tag.type { color: #0a84ff; background: rgba(10, 132, 255, 0.15); }
+
+        /* --- Overlay & Loader --- */
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .overlay.visible { opacity: 1; pointer-events: all; }
+
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .progress-text { color: white; font-size: 1.1rem; font-weight: 500; }
+        .progress-bar-container {
+            width: 300px; height: 6px;
+            background: #333;
+            border-radius: 3px;
+            margin-top: 15px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; background: var(--accent);
+            width: 0%;
+            transition: width 0.2s;
+        }
+
+        /* --- Error Section --- */
+        #error-box {
+            background: rgba(255, 69, 58, 0.1);
+            border: 1px solid var(--danger);
+            color: #ff6961;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        #error-box summary { cursor: pointer; font-weight: 600; outline: none; }
+        #error-details {
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            color: #ffccc7;
+        }
+
+        /* --- Empty State --- */
+        .empty-state {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+        }
+        .empty-icon { font-size: 3rem; margin-bottom: 15px; opacity: 0.5; }
+
     </style>
 </head>
-<body class="p-4 md:p-10">
-    <div class="max-w-5xl mx-auto">
-        <h1 class="text-3xl font-bold mb-8">Discovery</h1>
+<body>
 
-        <div class="flex gap-2 mb-10">
-            <input type="text" id="query" placeholder="Enter keywords..." class="flex-1 bg-[#111] border border-[#222] rounded-xl p-4 text-white focus:outline-none focus:border-blue-500">
-            <button id="searchBtn" class="bg-blue-600 px-8 rounded-xl font-bold hover:bg-blue-500 transition-colors">Search</button>
+    <header>
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
+            VK Indexer <span class="badge" id="mode-badge">VIDEO</span>
+        </h1>
+        <div class="stats">
+            <div>Total Indexed: <span id="stat-count">0</span></div>
+            <div style="font-size: 0.75rem; opacity: 0.7;">Last updated: <span id="stat-date">Never</span></div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Error Reporting -->
+        <div id="error-box">
+            <summary>⚠️ Error Occurred (Click to expand)</summary>
+            <div id="error-details"></div>
         </div>
 
-        <div id="status" class="text-gray-500 text-sm mb-4 uppercase tracking-widest font-bold">Ready</div>
-        
-        <div id="results" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        <!-- Controls -->
+        <section class="controls">
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary active" id="btn-mode-video" onclick="app.setMode('video')">Video</button>
+                <button class="btn btn-secondary" id="btn-mode-post" onclick="app.setMode('post')">Posts</button>
+            </div>
+
+            <button class="btn" id="btn-index" onclick="app.startIndexing()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path><line x1="9" y1="9" x2="9" y2="9"></line><line x1="15" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="9" y2="17"></line><polyline points="17 2 21 2 21 6"></polyline><line x1="21" y1="2" x2="14.5" y2="8.5"></line></svg>
+                Index Content
+            </button>
+
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" fill="none"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" stroke-width="2"/></svg>
+                <input type="text" class="search-input" id="search-input" placeholder="Search title, text..." oninput="app.handleSearch(this.value)">
+            </div>
+
+            <select id="sort-select" onchange="app.handleSort(this.value)">
+                <option value="date_new">Newest First</option>
+                <option value="date_old">Oldest First</option>
+                <option value="engagement_high">Most Engaged</option>
+                <option value="engagement_low">Least Engaged</option>
+                <option value="duration_long">Longest Duration</option>
+                <option value="duration_short">Shortest Duration</option>
+            </select>
+        </section>
+
+        <!-- Filters -->
+        <section class="filters-bar">
+            <div class="filter-group">
+                <span>Filter by:</span>
+                <select id="filter-main" onchange="app.handleFilterMain(this.value)">
+                    <!-- Populated by JS based on mode -->
+                </select>
+            </div>
+
+            <div class="filter-group">
+                <span>Quick:</span>
+                <div class="chips" id="chips-container">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </section>
+
+        <!-- Grid -->
+        <div class="grid" id="grid">
+            <div class="empty-state">
+                <div class="empty-icon">📂</div>
+                <h3>No Content Indexed</h3>
+                <p>Click "Index Content" to fetch data from VK (or simulate it).</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div class="overlay" id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="progress-text" id="progress-text">Initializing...</div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+        <div style="margin-top: 10px; color: #888; font-size: 0.9rem;" id="progress-detail"></div>
     </div>
 
     <script>
-        const APP_ID = 53969951;
-        let token = null;
+        // --- Mock Data Generators (For demo purposes if Bridge fails or is missing) ---
+        const MOCK_DB = {
+            videos: [],
+            posts: []
+        };
 
-        async function init() {
-            try { await vkBridge.send('VKWebAppInit'); } catch(e) {}
+        function generateMockVideos(count) {
+            const resolutions = ['SD', 'HD', 'Full HD', '4K'];
+            const titles = [
+                "How to build a web app in 2024", "My Trip to Tokyo", "Relaxing Lo-Fi Beats", 
+                "Review: New iPhone 16 Pro", "Gaming Highlights: Episode 4", 
+                "Advanced CSS Grid Tutorial", "Cat Compilation 2024", "SpaceX Launch Recap",
+                "Cooking Steak: Perfect Guide", "Nature Documentary 4K"
+            ];
+            const items = [];
+            for(let i=0; i<count; i++) {
+                const width = [640, 1280, 1920, 3840][Math.floor(Math.random()*4)];
+                let res = 'SD';
+                if(width >= 3840) res = '4K';
+                else if(width >= 1920) res = '1080p';
+                else if(width >= 1280) res = '720p';
+
+                items.push({
+                    id: `vid_${i}`,
+                    type: 'video',
+                    title: titles[Math.floor(Math.random() * titles.length)] + ` #${i+1}`,
+                    date: Date.now() - Math.floor(Math.random() * 10000000000), // Random time in last ~4 months
+                    duration: 60 + Math.floor(Math.random() * 3000), // 1 min to 50 mins
+                    views: Math.floor(Math.random() * 50000),
+                    width: width,
+                    height: width * 9 / 16,
+                    image: `https://picsum.photos/seed/vid${i}/400/225`
+                });
+            }
+            return items.sort((a,b) => b.date - a.date);
         }
 
-        async function performSearch(query, searchType = 'group,page') {
-            return await vkBridge.send('VKWebAppCallAPIMethod', {
-                method: 'groups.search',
-                params: {
-                    q: query,
-                    count: 30,
-                    extended: 1,
-                    type: searchType, // Try the specified types
-                    safe_searching: 0,
-                    fields: 'members_count,activity,description',
-                    v: '5.131',
-                    access_token: token
-                }
-            });
+        function generateMockPosts(count) {
+            const types = ['text', 'photo', 'video', 'link', 'audio'];
+            const texts = [
+                "Just had the best coffee ever! ☕", "Working on a new project, stay tuned.", 
+                "Check out this amazing view!", "Does anyone know how to fix this bug?", 
+                "Throwback to last summer.", "Great article about AI development."
+            ];
+            const items = [];
+            for(let i=0; i<count; i++) {
+                items.push({
+                    id: `post_${i}`,
+                    type: 'post',
+                    text: texts[Math.floor(Math.random() * texts.length)],
+                    postType: types[Math.floor(Math.random() * types.length)],
+                    date: Date.now() - Math.floor(Math.random() * 10000000000),
+                    likes: Math.floor(Math.random() * 1000),
+                    comments: Math.floor(Math.random() * 200),
+                    reposts: Math.floor(Math.random() * 50),
+                    image: `https://picsum.photos/seed/post${i}/400/300`
+                });
+            }
+            return items.sort((a,b) => b.date - a.date);
         }
 
-        async function handleSearch() {
-            const q = document.getElementById('query').value.trim();
-            if (!q) return;
+        // --- Core Application Logic ---
 
-            const btn = document.getElementById('searchBtn');
-            const resDiv = document.getElementById('results');
-            btn.disabled = true;
-            resDiv.style.opacity = '0.5';
+        class VKIndexer {
+            constructor() {
+                this.data = [];
+                this.filteredData = [];
+                this.mode = 'video'; // 'video' | 'post'
+                this.filters = {
+                    search: '',
+                    main: 'all', // resolution or content type
+                    chip: 'all'  // duration or date range
+                };
+                this.sort = 'date_new';
+                this.cacheKey = 'vk_indexer_cache_v1';
+                
+                // UI Elements
+                this.els = {
+                    grid: document.getElementById('grid'),
+                    overlay: document.getElementById('loading-overlay'),
+                    progText: document.getElementById('progress-text'),
+                    progFill: document.getElementById('progress-fill'),
+                    progDetail: document.getElementById('progress-detail'),
+                    statCount: document.getElementById('stat-count'),
+                    statDate: document.getElementById('stat-date'),
+                    errorBox: document.getElementById('error-box'),
+                    errorDetails: document.getElementById('error-details'),
+                    modeBadge: document.getElementById('mode-badge'),
+                    filterMain: document.getElementById('filter-main'),
+                    chipsContainer: document.getElementById('chips-container')
+                };
 
-            try {
-                if (!token) {
-                    const auth = await vkBridge.send('VKWebAppGetAuthToken', { app_id: APP_ID, scope: 'groups' });
-                    token = auth.access_token;
+                this.init();
+            }
+
+            async init() {
+                // Check cache
+                const cached = localStorage.getItem(this.cacheKey);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.mode === this.mode && parsed.data && parsed.data.length > 0) {
+                        this.data = parsed.data;
+                        this.updateStats(new Date(parsed.timestamp));
+                        this.processData(); // Filters and renders
+                        return;
+                    }
+                }
+            }
+
+            setMode(newMode) {
+                if(this.mode === newMode) return;
+                
+                this.mode = newMode;
+                this.els.modeBadge.textContent = newMode.toUpperCase();
+                
+                // Toggle active button
+                document.getElementById('btn-mode-video').classList.toggle('active', newMode === 'video');
+                document.getElementById('btn-mode-post').classList.toggle('active', newMode === 'post');
+
+                // Reset Data and try to load cache for specific mode
+                const cached = localStorage.getItem(this.cacheKey);
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (parsed.mode === this.mode && parsed.data && parsed.data.length > 0) {
+                        this.data = parsed.data;
+                        this.updateStats(new Date(parsed.timestamp));
+                        this.processData();
+                        this.updateFilterUI();
+                        return;
+                    }
                 }
 
-                let response;
+                this.data = [];
+                this.els.statCount.textContent = '0';
+                this.els.grid.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📂</div>
+                        <h3>Switched to ${newMode} mode</h3>
+                        <p>Click "Index Content" to load ${newMode}s.</p>
+                    </div>`;
+                this.updateFilterUI();
+            }
+
+            updateFilterUI() {
+                // Populate Main Dropdown
+                this.els.filterMain.innerHTML = '';
+                if (this.mode === 'video') {
+                    ['All', '4K', '1080p', '720p', 'SD'].forEach(opt => {
+                        const val = opt === 'All' ? 'all' : opt;
+                        this.els.filterMain.add(new Option(opt, val));
+                    });
+                    
+                    // Populate Chips (Duration)
+                    this.els.chipsContainer.innerHTML = `
+                        <div class="chip" onclick="app.handleChip('all', this)">All</div>
+                        <div class="chip" onclick="app.handleChip('short', this)">Short (<5m)</div>
+                        <div class="chip" onclick="app.handleChip('medium', this)">Medium (5-20m)</div>
+                        <div class="chip" onclick="app.handleChip('long', this)">Long (>20m)</div>
+                    `;
+                } else {
+                    ['All', 'Text', 'Photo', 'Video', 'Link'].forEach(opt => {
+                        const val = opt === 'All' ? 'all' : opt.toLowerCase();
+                        this.els.filterMain.add(new Option(opt, val));
+                    });
+
+                    // Populate Chips (Date)
+                    this.els.chipsContainer.innerHTML = `
+                        <div class="chip active" onclick="app.handleChip('all', this)">All Time</div>
+                        <div class="chip" onclick="app.handleChip('week', this)">This Week</div>
+                        <div class="chip" onclick="app.handleChip('month', this)">This Month</div>
+                        <div class="chip" onclick="app.handleChip('year', this)">This Year</div>
+                    `;
+                }
+                // Reset active chip visually
+                const allChip = this.els.chipsContainer.querySelector('.chip');
+                if(allChip) allChip.classList.add('active');
+                this.filters.chip = 'all';
+            }
+
+            async startIndexing() {
+                this.showLoading(true);
+                this.els.errorBox.style.display = 'none';
+                this.els.progText.textContent = "Connecting to VK...";
+                this.els.progFill.style.width = "0%";
+
                 try {
-                    // Try 1: Search with both Group and Page
-                    response = await performSearch(q, 'group,page');
+                    let fetchedData = [];
+
+                    // Check if we are inside VK environment
+                    if (window.vkBridge) {
+                        // 1. Auth
+                        this.els.progText.textContent = "Requesting Access Token...";
+                        const authData = await window.vkBridge.send('VKWebAppGetAuthToken', { 
+                            app_id: 53969951 // Standard web app ID or from launch params
+                        });
+                        
+                        // 2. Loop Fetch
+                        const method = this.mode === 'video' ? 'fave.get' : 'newsfeed.get'; 
+                        // Note: 'wall.get' is often better for posts but requires user_id. newsfeed.get is generic.
+                        const itemType = this.mode === 'video' ? 'video' : 'post';
+                        
+                        let offset = 0;
+                        let count = 20;
+                        let totalCount = 0;
+                        let hasMore = true;
+                        const maxItems = 1000; // Reasonable limit
+
+                        this.els.progText.textContent = `Fetching ${this.mode}s...`;
+
+                        while (hasMore && totalCount < maxItems) {
+                            const params = {
+                                access_token: authData.access_token,
+                                v: '5.131',
+                                count: count,
+                                offset: offset,
+                                extended: 1
+                            };
+                            
+                            if(this.mode === 'video') params.item_type = 'video';
+                            if(this.mode === 'post') params.filters = 'post'; // wall.get might be better in real scenario
+
+                            // Simulate network delay slightly for UI smoothness
+                            await new Promise(r => setTimeout(r, 100)); 
+
+                            const response = await window.vkBridge.send('VKWebAppCallAPIMethod', {
+                                method: method,
+                                params: params
+                            });
+
+                            if (response.error) throw new Error(response.error.error_msg);
+
+                            const items = response.response.items;
+                            const newItems = this.parseAPIItems(items);
+                            
+                            fetchedData = [...fetchedData, ...newItems];
+                            totalCount += items.length;
+                            offset += count;
+
+                            // Update Progress
+                            this.els.progDetail.textContent = `Retrieved: ${totalCount} items`;
+                            this.els.progFill.style.width = "50%";
+
+                            if (items.length < count) hasMore = false;
+                        }
+
+                    } else {
+                        // --- FALLBACK / MOCK MODE ---
+                        console.warn("VK Bridge not found. Using Mock Data.");
+                        this.els.progText.textContent = "Simulation Mode (Bridge Not Found)";
+                        this.els.progDetail.textContent = "Generating dummy data...";
+                        
+                        // Simulate async delay
+                        await new Promise(r => setTimeout(r, 800));
+                        this.els.progFill.style.width = "30%";
+
+                        const batchSize = 50;
+                        const totalMock = 150; // Generate 150 items
+                        const loops = totalMock / batchSize;
+
+                        for(let i=0; i<loops; i++) {
+                            await new Promise(r => setTimeout(r, 400));
+                            const chunk = this.mode === 'video' 
+                                ? generateMockVideos(batchSize) 
+                                : generateMockPosts(batchSize);
+                            fetchedData = [...fetchedData, ...chunk];
+                            
+                            this.els.progDetail.textContent = `Generated: ${fetchedData.length} items`;
+                            this.els.progFill.style.width = 30 + ((i+1)/loops * 60);
+                        }
+                    }
+
+                    // Finalize
+                    this.data = fetchedData;
+                    this.els.progFill.style.width = "100%";
+                    this.els.progText.textContent = "Processing...";
+                    
+                    // Cache
+                    localStorage.setItem(this.cacheKey, JSON.stringify({
+                        mode: this.mode,
+                        data: this.data,
+                        timestamp: Date.now()
+                    }));
+
+                    this.updateStats(new Date());
+                    this.processData();
+
+                    await new Promise(r => setTimeout(r, 500));
+                    this.showLoading(false);
+
                 } catch (e) {
-                    // Fallback: If "invalid type" error occurs, search without the type parameter
-                    console.warn("Retrying without type parameter...");
-                    response = await performSearch(q, ''); 
+                    this.showError(e);
+                    this.showLoading(false);
+                }
+            }
+
+            parseAPIItems(items) {
+                // Map raw VK API objects to our internal format
+                return items.map(item => {
+                    if (this.mode === 'video') {
+                        // fave.get returns video objects inside 'video' prop or directly depending on version
+                        // Simplifying for structure
+                        const v = item.video || item; 
+                        return {
+                            id: v.id,
+                            type: 'video',
+                            title: v.title || 'Untitled Video',
+                            date: v.date * 1000,
+                            duration: v.duration || 0,
+                            views: v.views || 0,
+                            width: v.width || 0,
+                            height: v.height || 0,
+                            image: v.photo_800 || v.photo_320 || `https://picsum.photos/seed/${v.id}/400/225`
+                        };
+                    } else {
+                        // Post parsing
+                        const attachmentType = item.attachments && item.attachments.length > 0 
+                            ? item.attachments[0].type 
+                            : (item.text ? 'text' : 'post');
+                        
+                        return {
+                            id: item.id,
+                            type: 'post',
+                            text: item.text || '',
+                            postType: attachmentType,
+                            date: item.date * 1000,
+                            likes: item.likes?.count || 0,
+                            comments: item.comments?.count || 0,
+                            reposts: item.reposts?.count || 0,
+                            image: (attachmentType === 'photo' && item.attachments[0].photo) 
+                                ? item.attachments[0].photo.sizes?.find(s=>s.type==='x')?.url || `https://picsum.photos/seed/${item.id}/400/300`
+                                : `https://picsum.photos/seed/${item.id}/400/300`
+                        };
+                    }
+                });
+            }
+
+            processData() {
+                // 1. Filter
+                this.filteredData = this.data.filter(item => {
+                    // Search
+                    const searchStr = (item.title + item.text).toLowerCase();
+                    if (this.filters.search && !searchStr.includes(this.filters.search.toLowerCase())) return false;
+
+                    // Dropdown Filter
+                    if (this.filters.main !== 'all') {
+                        if (this.mode === 'video') {
+                            // Resolution logic derived from width/height
+                            const w = item.width;
+                            let res = 'SD';
+                            if (w >= 3840) res = '4K';
+                            else if (w >= 1920) res = '1080p';
+                            else if (w >= 1280) res = '720p';
+                            if (res !== this.filters.main) return false;
+                        } else {
+                            if (item.postType !== this.filters.main) return false;
+                        }
+                    }
+
+                    // Chip Filter
+                    if (this.filters.chip !== 'all') {
+                        if (this.mode === 'video') {
+                            const d = item.duration; // seconds
+                            if (this.filters.chip === 'short' && d >= 300) return false;
+                            if (this.filters.chip === 'medium' && (d < 300 || d > 1200)) return false;
+                            if (this.filters.chip === 'long' && d <= 1200) return false;
+                        } else {
+                            const date = item.date;
+                            const now = Date.now();
+                            const day = 86400000;
+                            if (this.filters.chip === 'week' && (now - date) > 7*day) return false;
+                            if (this.filters.chip === 'month' && (now - date) > 30*day) return false;
+                            if (this.filters.chip === 'year' && (now - date) > 365*day) return false;
+                        }
+                    }
+
+                    return true;
+                });
+
+                // 2. Sort
+                this.filteredData.sort((a, b) => {
+                    switch(this.sort) {
+                        case 'date_new': return b.date - a.date;
+                        case 'date_old': return a.date - b.date;
+                        case 'engagement_high': 
+                            return (b.views || b.likes + b.comments) - (a.views || a.likes + a.comments);
+                        case 'engagement_low': 
+                            return (a.views || a.likes + a.comments) - (b.views || b.likes + b.comments);
+                        case 'duration_long': return (b.duration || 0) - (a.duration || 0);
+                        case 'duration_short': return (a.duration || 0) - (b.duration || 0);
+                        default: return 0;
+                    }
+                });
+
+                this.render();
+            }
+
+            render() {
+                if (this.filteredData.length === 0) {
+                    this.els.grid.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">🔍</div>
+                            <h3>No Results Found</h3>
+                            <p>Try adjusting your filters or search query.</p>
+                        </div>`;
+                    return;
                 }
 
-                const items = response.response?.items || response.items || [];
-                render(items);
-                document.getElementById('status').innerText = `Found ${items.length} communities`;
-
-            } catch (err) {
-                alert("Critical Error: " + (err.error_data?.error_msg || err.message));
-            } finally {
-                btn.disabled = false;
-                resDiv.style.opacity = '1';
-            }
-        }
-
-        function render(items) {
-            const container = document.getElementById('results');
-            if (items.length === 0) {
-                container.innerHTML = '<p class="text-gray-600">No results found.</p>';
-                return;
+                this.els.grid.innerHTML = this.filteredData.map(item => this.createCardHTML(item)).join('');
             }
 
-            container.innerHTML = items.map(g => `
-                <div class="card p-5 rounded-2xl flex flex-col">
-                    <div class="flex items-center gap-4 mb-4">
-                        <img src="${g.photo_100}" class="w-12 h-12 rounded-full shadow-lg">
-                        <div class="overflow-hidden">
-                            <h3 class="font-bold truncate text-sm">${g.name}</h3>
-                            <span class="text-[10px] text-blue-400 font-bold uppercase">${g.activity || 'Community'}</span>
+            createCardHTML(item) {
+                if (this.mode === 'video') {
+                    // Determine Resolution Tag
+                    let resTag = '';
+                    if (item.width >= 3840) resTag = '<span class="tag 4k">4K</span>';
+                    else if (item.width >= 1920) resTag = '<span class="tag hd">1080p</span>';
+                    else if (item.width >= 1280) resTag = '<span class="tag hd">720p</span>';
+                    else resTag = '<span class="tag">SD</span>';
+
+                    return `
+                    <div class="card">
+                        <img src="${item.image}" class="card-thumb" loading="lazy" alt="Thumb">
+                        <div class="card-body">
+                            <h3 class="card-title" title="${item.title}">${item.title}</h3>
+                            <div class="card-meta">
+                                <span>${this.formatDuration(item.duration)}</span>
+                                <span>${this.formatNumber(item.views)} views</span>
+                            </div>
+                            <div class="card-meta" style="margin-top:4px">
+                                ${resTag}
+                                <span style="font-size:0.7rem; opacity:0.6">${new Date(item.date).toLocaleDateString()}</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="text-xl font-black mb-4">${(g.members_count || 0).toLocaleString()} <span class="text-xs text-gray-500 font-normal">Members</span></div>
-                    <a href="https://vk.com/${g.screen_name || 'public'+g.id}" target="_blank" class="mt-auto block w-full bg-blue-600/10 text-blue-500 text-center py-3 rounded-xl font-bold text-xs hover:bg-blue-600 hover:text-white transition-all">VIEW</a>
-                </div>
-            `).join('');
+                    </div>`;
+                } else {
+                    return `
+                    <div class="card">
+                        <img src="${item.image}" class="card-thumb" style="aspect-ratio: 1/1; object-position: top;" loading="lazy" alt="Thumb">
+                        <div class="card-body">
+                            <h3 class="card-title">${item.text || 'No text content'}</h3>
+                            <div class="card-meta">
+                                <span class="tag type">${item.postType.toUpperCase()}</span>
+                                <span>♥ ${this.formatNumber(item.likes)}</span>
+                            </div>
+                             <div class="card-meta" style="margin-top:4px">
+                                <span>💬 ${item.comments}</span>
+                                <span style="font-size:0.7rem; opacity:0.6">${new Date(item.date).toLocaleDateString()}</span>
+                            </div>
+                        </div>
+                    </div>`;
+                }
+            }
+
+            // --- Helpers ---
+            showLoading(show) {
+                if (show) this.els.overlay.classList.add('visible');
+                else this.els.overlay.classList.remove('visible');
+            }
+
+            showError(err) {
+                this.els.errorBox.style.display = 'block';
+                this.els.errorDetails.textContent = err.toString() + "\n" + err.stack;
+            }
+
+            updateStats(date) {
+                this.els.statCount.textContent = this.data.length;
+                this.els.statDate.textContent = date.toLocaleTimeString() + " " + date.toLocaleDateString();
+            }
+
+            handleSearch(val) {
+                this.filters.search = val;
+                this.processData();
+            }
+
+            handleSort(val) {
+                this.sort = val;
+                this.processData();
+            }
+
+            handleFilterMain(val) {
+                this.filters.main = val;
+                this.processData();
+            }
+
+            handleChip(val, el) {
+                // UI Toggle
+                document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+                el.classList.add('active');
+                
+                this.filters.chip = val;
+                this.processData();
+            }
+
+            formatDuration(secs) {
+                const m = Math.floor(secs / 60);
+                const s = Math.floor(secs % 60);
+                return `${m}:${s < 10 ? '0'+s : s}`;
+            }
+
+            formatNumber(num) {
+                if (num >= 1000000) return (num/1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num/1000).toFixed(1) + 'K';
+                return num;
+            }
         }
 
-        document.getElementById('searchBtn').addEventListener('click', handleSearch);
-        document.getElementById('query').addEventListener('keypress', e => e.key === 'Enter' && handleSearch());
-        init();
+        // Initialize App
+        const app = new VKIndexer();
+        app.updateFilterUI(); // Init UI state
+
     </script>
 </body>
 </html>
